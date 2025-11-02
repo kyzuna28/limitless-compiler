@@ -84,7 +84,10 @@ jobs:
       uses: actions/checkout@v4
     - name: Setup Packages
       run: |
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc
+         if [ ${{ inputs.aosp-clang }} == false ]; then
+            sudo apt install -y clang
+         fi
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
          if [ -f /bin/swapon ]; then
              export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
