@@ -1,4 +1,3 @@
-# SilverCore Kernel - Branch TEN
 name: Build SilverCore Kernel (ten)
 
 on:
@@ -10,7 +9,7 @@ on:
         required: true
         type: string
       kernel-branch:
-        description: 'Branch Kernel'
+        description: 'Branch'
         default: 'ten'
         required: true
         type: string
@@ -22,23 +21,19 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
-      - name: Checkout Action
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install Dependencies
         run: |
-          sudo apt-get update --fix-missing
-          sudo apt-get install -y \
-            git curl bc bison flex make python3 \
-            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-            binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi \
-            libssl-dev libelf-dev zip
+          sudo apt-get update
+          sudo apt-get install -y git bc bison flex make python3 libssl-dev libelf-dev \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi binutils-aarch64-linux-gnu \
+            binutils-arm-linux-gnueabi zip
 
-      - name: Clone Kernel Source
-        run: |
-          git clone --depth=1 https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git -b ${{ inputs.kernel-branch }} kernel-dir
+      - name: Clone Kernel
+        run: git clone --depth=1 https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git -b ${{ inputs.kernel-branch }} kernel-dir
 
       - name: Build Kernel
         working-directory: ./kernel-dir
@@ -48,17 +43,16 @@ jobs:
           export KBUILD_BUILD_USER="dzaky"
           export KBUILD_BUILD_HOST="github"
           export ARCH=arm64
-          export SUBARCH=arm64
           
-          # Fix common issues on old 4.9 kernel
+          # Fix common issues kernel 4.9
+          sed -i 's/-mfix-cortex-a53-843419//g' arch/arm64/Makefile || true
+          
           echo "CONFIG_LTO_NONE=y" >> ../../out/.config 2>/dev/null || true
-          echo "CONFIG_LTO_CLANG=n" >> ../../out/.config 2>/dev/null || true
-          echo "CONFIG_THINLTO=n" >> ../../out/.config 2>/dev/null || true
           
-          echo "=== Using defconfig: ${{ inputs.kernel-config }} ==="
+          echo "=== Defconfig ==="
           make O=../../out ARCH=arm64 ${{ inputs.kernel-config }}
           
-          echo "=== Starting compilation (GCC) ==="
+          echo "=== Building with GCC ==="
           make -j$(nproc) O=../../out ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
@@ -67,25 +61,24 @@ jobs:
             NM=aarch64-linux-gnu-nm \
             OBJCOPY=aarch64-linux-gnu-objcopy \
             OBJDUMP=aarch64-linux-gnu-objdump \
-            STRIP=aarch64-linux-gnu-strip
+            STRIP=aarch64-linux-gnu-strip \
+            KBUILD_CFLAGS+="-Wno-error" \
+            KBUILD_AFLAGS+="-Wno-error"
 
-      - name: Package with AnyKernel3
+      - name: Package Kernel
         run: |
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
-          cd AnyKernel3
-          rm -rf .git .github LICENSE README.md modules patch ramdisk
-          cd ..
+          cd AnyKernel3 && rm -rf .git .github LICENSE README.md modules patch ramdisk && cd ..
           
-          # Copy hasil compile
           if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
-            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
+            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           elif [ -f out/arch/arm64/boot/Image.gz ]; then
-            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+            cp out/arch/arm64/boot/Image.gz AnyKernel3/
           else
-            cp out/arch/arm64/boot/Image AnyKernel3/Image
+            cp out/arch/arm64/boot/Image AnyKernel3/
           fi
 
-      - name: Upload Kernel
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.name }}
