@@ -1,5 +1,5 @@
 # linex Project - SilverCore Kernel (beryllium)
-name: linex Project v0.2-ub
+name: linex Project v0.2-kyy
 
 on:
   workflow_dispatch:
@@ -47,7 +47,8 @@ jobs:
           sudo apt-get update --fix-missing
           sudo apt-get install -y git curl bc bison flex make \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-            binutils-aarch64-linux-gnu libssl-dev libelf-dev python3 zip
+            binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi \
+            libssl-dev libelf-dev python3 zip
 
       - name: Clone Kernel Source
         run: |
@@ -63,14 +64,25 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
+          # Disable LTO & LLVM related configs
+          echo "CONFIG_LTO_NONE=y" >> ../../out/.config
+          echo "CONFIG_LTO_CLANG=n" >> ../../out/.config
+          echo "CONFIG_THINLTO=n" >> ../../out/.config
+          
           echo "=== Using defconfig: ${{ inputs.kernel-config }} ==="
           make O=../../out ARCH=arm64 ${{ inputs.kernel-config }}
           
-          echo "=== Starting build with GCC ==="
+          echo "=== Starting build with Pure GCC ==="
           make -j$(nproc) O=../../out ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+            CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
+            LD=aarch64-linux-gnu-ld.bfd \
+            AR=aarch64-linux-gnu-ar \
+            NM=aarch64-linux-gnu-nm \
+            OBJCOPY=aarch64-linux-gnu-objcopy \
+            OBJDUMP=aarch64-linux-gnu-objdump \
+            STRIP=aarch64-linux-gnu-strip
 
       - name: Prepare AnyKernel3
         run: |
