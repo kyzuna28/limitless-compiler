@@ -85,22 +85,7 @@ jobs:
          fi
     - name: Compile
       run: |
-          mkdir -p out
-          cd kernel-dir
-          export KBUILD_BUILD_USER=linex
-          export KBUILD_BUILD_HOST=project
-          COMMAND="make -j$(nproc --all) ${{ inputs.kernel-config }} ARCH=arm64 O=../out all"
-          COMMAND="$COMMAND CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
-          if [ "${{ inputs.compiler }}" = "clang" ]; then
-          COMMAND="$COMMAND CC=clang CLANG_TRIPLE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1"
-          fi
-          if [ "${{ inputs.compiler }}" = "llvm" ]; then
-          COMMAND="$COMMAND CC=clang LLVM=1 LLVM_IAS=0 AR=llvm-ar NM=llvm-nm STRIP=llvm-strip OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar"
-          fi
-          if [ "${{ inputs.command }}" != "false" ]; then
-          COMMAND="$COMMAND ${{ inputs.command }}"
-          fi
-          eval $COMMAND
+          mkdir -p out && cd kernel-dir && export ARCH=arm64 SUBARCH=arm64 KBUILD_BUILD_USER=linex KBUILD_BUILD_HOST=project PATH=$HOME/clang/bin:$PATH && make O=../out beryllium_defconfig && make -j$(nproc) O=../out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CROSS_COMPILE_COMPAT=arm-linux-androideabi- LLVM=1 LLVM_IAS=1
     - name: AnyKernel3
       run: |
           git clone ${{ inputs.any-kernel3 }} AnyKernel3
