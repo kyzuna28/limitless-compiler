@@ -1,0 +1,52 @@
+name: linext Compiler SDM845
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y git curl bc bison flex make clang llvm gcc g++ zip
+
+    - name: Setup Clang
+      run: |
+        mkdir -p $HOME/clang
+        curl -L "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz" -o clang.tar.gz
+        tar -C $HOME/clang -xf clang.tar.gz
+
+    - name: Clone Kernel
+      run: |
+        git clone --depth=1 https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git kernel
+
+    - name: Build Kernel
+      run: |
+        mkdir -p out
+        cd kernel
+
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export KBUILD_BUILD_USER=linex
+        export KBUILD_BUILD_HOST=sdm845
+        export PATH=$HOME/clang/bin:$PATH
+
+        make O=../out beryllium_defconfig
+
+        make -j$(nproc) O=../out \
+        CC=clang \
+        CLANG_TRIPLE=aarch64-linux-gnu- \
+        CROSS_COMPILE=aarch64-linux-android- \
+        CROSS_COMPILE_ARM32=arm-linux-androideabi-
+
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: sdm845-kernel
+        path: out/*
