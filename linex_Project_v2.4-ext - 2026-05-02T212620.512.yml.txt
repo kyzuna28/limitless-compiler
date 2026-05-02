@@ -1,0 +1,132 @@
+# linex Project
+name: linext Compiler v2.8-ext
+on:
+  workflow_dispatch:
+    inputs:
+      ubuntu:
+        description: Run on
+        default: ubuntu-latest
+        required: true
+        type: string
+
+      name:
+        description: Name
+        default: beryllium-kernel
+        required: true
+        type: string
+
+      compiler:
+        description: Compiler
+        default: clang
+        required: true
+        type: string
+
+      aosp-clang:
+        description: Clang URL
+        default: https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz
+        required: true
+        type: string
+
+      kernel-url:
+        description: Kernel URL
+        default: https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git
+        required: true
+        type: string
+
+      kernel-branch:
+        description: Kernel branch
+        default: main
+        required: true
+        type: string
+
+      kernel-config:
+        description: Defconfig
+        default: beryllium_defconfig
+        required: true
+        type: string
+
+      disable-lto:
+        description: Disable LTO
+        default: true
+        required: true
+        type: boolean
+
+      AK3:
+        description: AnyKernel3
+        default: https://github.com/osm0sis/AnyKernel3
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ${{ inputs.ubuntu }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Packages
+      run: |
+        sudo apt update
+        sudo apt install -y git curl bc bison flex make clang llvm gcc g++ zip
+
+    - name: Setup Clang
+      run: |
+        mkdir -p $HOME/clang
+        curl -L "${{ inputs.aosp-clang }}" -o clang.tar.gz
+        tar -C $HOME/clang -xf clang.tar.gz
+
+    - name: Clone Kernel
+      run: |
+        git clone --depth=1 "${{ inputs.kernel-url }}" kernel
+
+    - name: Kernel Config
+      run: |
+        cd kernel
+        ls
+
+    - name: Disable LTO
+      run: |
+        cd kernel
+        if [ "${{ inputs.disable-lto }}" = "true" ]; then
+          sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
+          sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
+        fi
+
+    - name: Build Kernel
+      run: |
+        mkdir -p out
+        cd kernel
+
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export KBUILD_BUILD_USER=linex
+        export KBUILD_BUILD_HOST=beryllium
+        export PATH=$HOME/clang/bin:$PATH
+
+        make O=../out ${{ inputs.kernel-config }}
+
+        make -j$(nproc) O=../out \
+        CC=clang \
+        CLANG_TRIPLE=aarch64-linux-gnu- \
+        CROSS_COMPILE=aarch64-linux-android- \
+        CROSS_COMPILE_ARM32=arm-linux-androideabi-
+
+    - name: AnyKernel3
+      run: |
+        git clone "${{ inputs.AK3 }}" AnyKernel3
+        rm -rf AnyKernel3/.git
+
+        if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+          cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+        elif [ -f out/arch/arm64/boot/Image.gz ]; then
+          cp out/arch/arm64/boot/Image.gz AnyKernel3/
+        elif [ -f out/arch/arm64/boot/Image ]; then
+          cp out/arch/arm64/boot/Image AnyKernel3/
+        fi
+
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.name }}
+        path: AnyKernel3/*
