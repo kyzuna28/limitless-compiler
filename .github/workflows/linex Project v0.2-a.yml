@@ -47,15 +47,15 @@ jobs:
           sudo apt-get update --fix-missing
           sudo apt-get install -y git curl bc bison flex make clang llvm lld \
             binutils-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-            libssl-dev libelf-dev python3 aria2 zip
+            libssl-dev libelf-dev python3 aria2 zip zstd
 
       - name: Setup Toolchains
         run: |
           mkdir -p $HOME/toolchains/clang $HOME/toolchains/gcc64 $HOME/toolchains/gcc32
           
-          echo "Downloading Proton Clang (Recommended for SDM845)..."
-          aria2c -x16 -o proton-clang.tar.zst https://github.com/kdrag0n/proton-clang/releases/download/20231217/proton-clang-20231217.tar.zst
-          tar -C $HOME/toolchains/clang --zstd -xf proton-clang.tar.zst
+          echo "Downloading ZyC Clang 17 (Stable for SDM845)..."
+          aria2c -x16 -o zyc-clang.tar.zst https://github.com/ZyCromerZ/Clang/releases/download/17.0.6-20231003-release/zyc-clang-17.0.6-20231003.tar.zst
+          tar --zstd -C $HOME/toolchains/clang -xf zyc-clang.tar.zst
           
           echo "Downloading GCC 4.9..."
           aria2c -x16 -o gcc64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
@@ -83,7 +83,7 @@ jobs:
           echo "=== Using defconfig: ${{ inputs.kernel-config }} ==="
           make O=../out ARCH=arm64 ${{ inputs.kernel-config }}
           
-          echo "=== Starting compilation with Proton Clang ==="
+          echo "=== Starting compilation with ZyC Clang ==="
           make -j$(nproc) O=../out \
             CC=clang \
             ARCH=arm64 \
@@ -96,8 +96,8 @@ jobs:
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           cd AnyKernel3
           rm -rf .git .github LICENSE README.md modules patch ramdisk
-          
           cd ..
+          
           if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
             cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
           elif [[ -f out/arch/arm64/boot/Image.gz ]]; then
