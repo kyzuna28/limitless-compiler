@@ -10,32 +10,27 @@ on:
         type: string
       name:
         description: 'Name'
-        default: '4.9-kernel'
-        required: true
-        type: string
-      apt-get:
-        description: 'apt-get'
-        default: 'sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu'
+        default: '4.9-beryllium'
         required: true
         type: string
       kernel-source:
         description: 'kernel-source'
-        default: 'https://github.com/linex-17/Limitless.git'
+        default: 'https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git'
         required: true
         type: string
       kernel-branch:
         description: 'kernel-branch'
-        default: 'main'
+        default: 'ten'
         required: true
         type: string
       kernel-config:
         description: 'kernel-config'
-        default: 'xi_defconfig'
+        default: 'beryllium_defconfig'
         required: true
         type: string
       kernelsu:
         description: 'KernelSU | false if kernel-source not support'
-        default: 'curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.7.6'
+        default: 'false'
         required: true
         type: string
       compiler:
@@ -51,35 +46,7 @@ jobs:
       uses: actions/checkout@v4
     - name: Compile
       run: |
-         sudo apt-get update
-         ${{ inputs.apt-get }}
-         mkdir -p -v $HOME/gcc-64
-         aria2c -o gcc-aarch64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
-         tar -C $HOME/gcc-64 -zxf gcc-aarch64.tar.gz
-         mkdir -p -v $HOME/gcc-32
-         aria2c -o gcc-arm.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
-         tar -C $HOME/gcc-32 -zxf gcc-arm.tar.gz
-         mkdir $HOME/clang -p -v
-         aria2c -o aosp-clang.tar.gz https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz
-         tar -C $HOME/clang -zxf aosp-clang.tar.gz
-         git clone --depth=1 ${{ inputs.kernel-source }} -b ${{ inputs.kernel-branch }} kernel-dir
-         mkdir out -p -v
-         cd kernel-dir
-         if [ ${{ inputs.kernelsu }} != false ]; then
-            rm -rf KernelSU
-            ${{ inputs.kernelsu }}
-         fi
-         export KBUILD_BUILD_USER="linex"
-         export KBUILD_BUILD_HOST="project"
-         if [ ${{ inputs.compiler }} == gcc ]; then
-            make -j$(nproc --all) ${{ inputs.kernel-config }} ARCH=arm64 O=../out all CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
-         elif [ ${{ inputs.compiler }} == clang ]; then
-            export PATH=$HOME/clang/bin:$HOME/gcc-64/bin:$HOME/gcc-32:$PATH
-            make -j$(nproc --all) ${{ inputs.kernel-config }} ARCH=arm64 O=../out all CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu- CC=clang
-         elif [ ${{ inputs.compiler }} == llvm ]; then
-            export PATH=$HOME/clang/bin:$HOME/gcc-64/bin:$HOME/gcc-32:$PATH
-            make -j$(nproc --all) ${{ inputs.kernel-config }} ARCH=arm64 O=../out all CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu- CC=clang LLVM=1 LLVM_IAS=0 AR=llvm-ar NM=llvm-nm STRIP=llvm-strip OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar
-         fi
+       sudo apt-get update --fix-missing && sudo apt-get install -y git curl bc bison flex make clang llvm lld binutils-aarch64-linux-gnu gcc-arm-linux-gnueabi gcc-arm-linux-gnueabihf libssl-dev libelf-dev python3 && mkdir -p $HOME/gcc-64 $HOME/gcc-32 $HOME/clang out && aria2c -o gcc-aarch64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz && tar -C $HOME/gcc-64 -zxf gcc-aarch64.tar.gz && aria2c -o gcc-arm.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz && tar -C $HOME/gcc-32 -zxf gcc-arm.tar.gz && aria2c -o aosp-clang.tar.gz https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz && tar -C $HOME/clang -zxf aosp-clang.tar.gz && git clone --depth=1 ${{ inputs.kernel-source }} -b ${{ inputs.kernel-branch }} kernel-dir && cd kernel-dir && export KBUILD_BUILD_USER=linex KBUILD_BUILD_HOST=project && make O=../out ${{ inputs.kernel-config }} ARCH=arm64 && make -j$(nproc) O=../out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1
     - name: AnyKernel3
       run: |
           git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
