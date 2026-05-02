@@ -105,7 +105,8 @@ jobs:
           NM=llvm-nm \
           STRIP=llvm-strip \
           CLANG_TRIPLE=aarch64-linux-gnu- \
-          CROSS_COMPILE=aarch64-linux-gnu-
+          CROSS_COMPILE=aarch64-linux-gnu- \
+          CROSS_COMPILE_ARM32=arm-linux-gnueabi-
     - name: AnyKernel3
       run: |
           git clone ${{ inputs.any-kernel3 }} AnyKernel3
