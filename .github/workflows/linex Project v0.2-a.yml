@@ -11,7 +11,7 @@ on:
         type: string
       name:
         description: 'Kernel Name'
-        default: '4.9-beryllium'
+        default: 'SilverCore-4.9-beryllium'
         required: true
         type: string
       kernel-source:
@@ -34,11 +34,6 @@ on:
         default: 'false'
         required: true
         type: string
-      compiler:
-        description: 'Compiler (clang/gcc)'
-        default: 'clang'
-        required: true
-        type: string
 
 jobs:
   build-kernel:
@@ -58,9 +53,9 @@ jobs:
         run: |
           mkdir -p $HOME/toolchains/clang $HOME/toolchains/gcc64 $HOME/toolchains/gcc32
           
-          echo "Downloading AOSP Clang..."
-          aria2c -x16 -o clang.tar.gz https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r1/clang-r510928.tar.gz
-          tar -C $HOME/toolchains/clang -zxf clang.tar.gz
+          echo "Downloading Proton Clang (Recommended for SDM845)..."
+          aria2c -x16 -o proton-clang.tar.zst https://github.com/kdrag0n/proton-clang/releases/download/20231217/proton-clang-20231217.tar.zst
+          tar -C $HOME/toolchains/clang --zstd -xf proton-clang.tar.zst
           
           echo "Downloading GCC 4.9..."
           aria2c -x16 -o gcc64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
@@ -72,7 +67,6 @@ jobs:
       - name: Clone Kernel Source
         run: |
           git clone --depth=1 ${{ inputs.kernel-source }} -b ${{ inputs.kernel-branch }} kernel-dir
-          cd kernel-dir
 
       - name: Build Kernel
         working-directory: ./kernel-dir
@@ -85,22 +79,17 @@ jobs:
           export PATH=$HOME/toolchains/clang/bin:$HOME/toolchains/gcc64/bin:$HOME/toolchains/gcc32/bin:$PATH
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-          export CLANG_TRIPLE=aarch64-linux-gnu-
           
-          echo "Using defconfig: ${{ inputs.kernel-config }}"
-          
+          echo "=== Using defconfig: ${{ inputs.kernel-config }} ==="
           make O=../out ARCH=arm64 ${{ inputs.kernel-config }}
           
-          if [[ "${{ inputs.kernelsu }}" == "true" ]]; then
-            echo "KernelSU enabled (patch manually if needed)"
-          fi
-          
+          echo "=== Starting compilation with Proton Clang ==="
           make -j$(nproc) O=../out \
             CC=clang \
-            LLVM=1 LLVM_IAS=1 \
             ARCH=arm64 \
             CROSS_COMPILE=aarch64-linux-android- \
-            CROSS_COMPILE_ARM32=arm-linux-androideabi-
+            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+            LLVM=1 LLVM_IAS=1
 
       - name: Prepare AnyKernel3
         run: |
@@ -108,18 +97,17 @@ jobs:
           cd AnyKernel3
           rm -rf .git .github LICENSE README.md modules patch ramdisk
           
-          # Copy kernel image
-          if [[ -f ../out/arch/arm64/boot/Image.gz-dtb ]]; then
-            cp ../out/arch/arm64/boot/Image.gz-dtb Image.gz-dtb
-          elif [[ -f ../out/arch/arm64/boot/Image.gz ]]; then
-            cp ../out/arch/arm64/boot/Image.gz Image.gz
-          elif [[ -f ../out/arch/arm64/boot/Image ]]; then
-            cp ../out/arch/arm64/boot/Image Image
+          cd ..
+          if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
+            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
+          elif [[ -f out/arch/arm64/boot/Image.gz ]]; then
+            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+          elif [[ -f out/arch/arm64/boot/Image ]]; then
+            cp out/arch/arm64/boot/Image AnyKernel3/Image
           fi
           
-          # Copy DTBO if exists
-          if [[ -f ../out/arch/arm64/boot/dtbo.img ]]; then
-            cp ../out/arch/arm64/boot/dtbo.img dtbo.img
+          if [[ -f out/arch/arm64/boot/dtbo.img ]]; then
+            cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
           fi
 
       - name: Upload Artifact
