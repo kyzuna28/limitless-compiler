@@ -25,7 +25,7 @@ on:
         type: string
       kernel-url:
         description: 'Kernel-url'
-        default: 'https://github.com/linex-17/Limitless.git'
+        default: 'https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git'
         required: true
         type: string
       kernel-branch:
