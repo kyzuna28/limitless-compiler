@@ -20,7 +20,7 @@ on:
         type: string
       kernel-source:
         description: 'kernel-source'
-        default: 'https://github.com/linex-17/Limitless.git'
+        default: 'https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git'
         required: true
         type: string
       kernel-branch:
@@ -30,12 +30,12 @@ on:
         type: string
       kernel-config:
         description: 'kernel-config'
-        default: 'xi_defconfig'
+        default: 'sdm845_defconfig'
         required: true
         type: string
       kernelsu:
         description: 'KernelSU | false if kernel-source not support'
-        default: 'curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.7.6'
+        default: 'false'
         required: true
         type: string
       compiler:
