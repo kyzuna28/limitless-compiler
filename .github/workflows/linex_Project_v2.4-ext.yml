@@ -135,8 +135,7 @@ jobs:
     - name: Setup Kernel
       run: |
          if [ ${{ inputs.kernel-url }} != false ]; then
-            git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
-         else
+            git clone --depth=1 ${{ inputs.kernel-url }} kernel-dir
             if [ ${{ inputs.kernel-branch }} != main ]; then
                ${{ inputs.kernel-branch }}
             else
