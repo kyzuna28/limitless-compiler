@@ -1,121 +1,66 @@
-# linex Project - SilverCore Kernel (beryllium)
-name: linex Project v0.2-ub
+name: SilverCore Kernel TEN 2
 
 on:
   workflow_dispatch:
     inputs:
-      ubuntu:
-        description: 'Run on'
-        default: 'ubuntu-latest'
-        required: true
-        type: string
       name:
-        description: 'Kernel Name'
-        default: 'SilverCore-beryllium'
+        description: 'Nama Output'
+        default: 'SilverCore-ten'
         required: true
-        type: string
-      kernel-source:
-        description: 'kernel-source'
-        default: 'https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git'
-        required: true
-        type: string
-      kernel-branch:
-        description: 'kernel-branch'
-        default: 'ten'
-        required: true
-        type: string
-      kernel-config:
-        description: 'kernel-config'
-        default: 'beryllium_defconfig'
-        required: true
-        type: string
-      kernelsu:
-        description: 'KernelSU (true/false)'
-        default: 'false'
-        required: true
-        type: string
-      compiler:
-        description: 'compiler (gcc / clang)'
-        default: 'clang'
-        required: true
-        type: string
 
 jobs:
-  build-kernel:
-    runs-on: ${{ inputs.ubuntu }}
+  build:
+    runs-on: ubuntu-20.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Dependencies
+      - name: Install Build Dependencies
         run: |
-          sudo apt-get update --fix-missing
-          sudo apt-get install -y git curl bc bison flex make clang llvm lld \
-            binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabi libssl-dev libelf-dev python3 zip
+          sudo apt-get update
+          sudo apt-get install -y git bc bison flex make python3 \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi \
+            libssl-dev libelf-dev zip
 
-      - name: Clone Kernel Source
-        run: |
-          git clone --depth=1 ${{ inputs.kernel-source }} -b ${{ inputs.kernel-branch }} kernel-dir
+      - name: Clone Kernel
+        run: git clone --depth=1 https://github.com/PainKiller3/android_kernel_xiaomi_sdm845 -b ten kernel-dir
 
-      - name: Compile Kernel
-        working-directory: ./kernel-dir
+      - name: Build
+        working-directory: kernel-dir
         run: |
-          mkdir -p ../../out
+          mkdir -p ../out
           
-          export KBUILD_BUILD_USER="linex"
-          export KBUILD_BUILD_HOST="project"
           export ARCH=arm64
-          export SUBARCH=arm64
+          export KBUILD_BUILD_USER="dzaky"
+          export KBUILD_BUILD_HOST="github"
           
-          echo "=== Using defconfig: ${{ inputs.kernel-config }} ==="
+          # Fix for old kernel
+          sed -i '/-mfix-cortex-a53-843419/d' arch/arm64/Makefile || true
           
-          # Generate config
-          make O=../../out ARCH=arm64 ${{ inputs.kernel-config }}
+          echo "=== Defconfig ==="
+          make O=../out beryllium_defconfig
           
-          if [[ "${{ inputs.kernelsu }}" == "true" ]]; then
-            echo "KernelSU enabled"
-            # Tambahkan patch KernelSU di sini jika diperlukan
-          fi
-          
-          echo "=== Starting build with ${{ inputs.compiler }} ==="
-          
-          if [[ "${{ inputs.compiler }}" == "gcc" ]]; then
-            make -j$(nproc) O=../../out ARCH=arm64 \
-              CROSS_COMPILE=aarch64-linux-gnu- \
-              CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-            
-          else  # clang (default & recommended)
-            make -j$(nproc) O=../../out ARCH=arm64 \
-              CC=clang \
-              CROSS_COMPILE=aarch64-linux-gnu- \
-              CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-              LLVM=1 LLVM_IAS=1
-          fi
+          echo "=== Building... ==="
+          make -j$(nproc) O=../out \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LD=aarch64-linux-gnu-ld.bfd \
+            KBUILD_CFLAGS+="-Wno-error -fno-pic" \
+            KBUILD_AFLAGS+="-Wno-error"
 
-      - name: Prepare AnyKernel3
+      - name: AnyKernel3
         run: |
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           cd AnyKernel3
           rm -rf .git .github LICENSE README.md modules patch ramdisk
           cd ..
           
-          # Copy kernel image
-          if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
-            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [[ -f out/arch/arm64/boot/Image.gz ]]; then
-            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
-          elif [[ -f out/arch/arm64/boot/Image ]]; then
-            cp out/arch/arm64/boot/Image AnyKernel3/Image
-          fi
-          
-          if [[ -f out/arch/arm64/boot/dtbo.img ]]; then
-            cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
-          fi
+          cp kernel-dir/../out/arch/arm64/boot/Image.gz* AnyKernel3/ 2>/dev/null || \
+          cp kernel-dir/../out/arch/arm64/boot/Image AnyKernel3/
 
-      - name: Upload Artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.name }}
-          path: AnyKernel3/*
-          retention-days: 30
+          path: AnyKernel3/
+          
