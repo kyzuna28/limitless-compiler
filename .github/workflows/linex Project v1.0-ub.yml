@@ -70,7 +70,7 @@ jobs:
     - name: Setup
       run: |
          sudo apt-get update
-         sudo apt-get install -y git curl bc bison flex make clang llvm lld
+         sudo apt-get install -y git curl bc bison flex make clang llvm lld binutils-aarch64-linux-gnu
     - name: Setup Kernel
       run: |
          git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
@@ -85,7 +85,21 @@ jobs:
          fi
     - name: Compile
       run: |
-          mkdir -p out && cd kernel-dir && export ARCH=arm64 SUBARCH=arm64 KBUILD_BUILD_USER=linex KBUILD_BUILD_HOST=project PATH=$HOME/clang/bin:$PATH && make O=../out beryllium_defconfig && make -j$(nproc) O=../out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CROSS_COMPILE_COMPAT=arm-linux-androideabi- LLVM=1 LLVM_IAS=1
+          mkdir -p out
+          cd kernel-dir
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export KBUILD_BUILD_USER=linex
+          export KBUILD_BUILD_HOST=project
+          export LLVM=1
+          export LLVM_IAS=1
+          make O=../out ${{ inputs.kernel-config }}
+          make -j$(nproc) O=../out \
+          CC=clang \
+          CLANG_TRIPLE=aarch64-linux-gnu- \
+          CROSS_COMPILE=aarch64-linux-gnu- \
+          CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+          CROSS_COMPILE_COMPAT=arm-linux-androideabi-
     - name: AnyKernel3
       run: |
           git clone ${{ inputs.any-kernel3 }} AnyKernel3
