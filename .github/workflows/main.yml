@@ -1,0 +1,97 @@
+name: linext Compiler SDM845
+
+on:
+workflow_dispatch:
+inputs:
+ubuntu:
+default: ubuntu-latest
+name:
+default: sdm845-kernel
+compiler:
+default: clang
+aosp-clang:
+default: https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz
+kernel-url:
+default: https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git
+kernel-config:
+default: beryllium_defconfig
+kernelsu:
+default: true
+disable-lto:
+default: true
+AK3:
+default: https://github.com/osm0sis/AnyKernel3
+
+jobs:
+build:
+runs-on: ${{ inputs.ubuntu }}
+
+steps:
+- name: Setup
+  run: |
+    sudo apt update
+    sudo apt install -y git curl bc bison flex libssl-dev make gcc g++ zip
+
+- name: Setup Clang
+  run: |
+    mkdir -p $HOME/clang
+    curl -L "${{ inputs.aosp-clang }}" -o clang.tar.gz
+    tar -C $HOME/clang -xf clang.tar.gz
+
+- name: Clone Kernel
+  run: |
+    git clone --depth=1 "${{ inputs.kernel-url }}" kernel
+    cd kernel
+    ls
+
+- name: Setup KernelSU
+  run: |
+    cd kernel
+    if [ "${{ inputs.kernelsu }}" = "true" ]; then
+      curl -LSs https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh | bash
+    fi
+
+- name: Disable LTO
+  run: |
+    cd kernel
+    if [ "${{ inputs.disable-lto }}" = "true" ]; then
+      sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
+      sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
+    fi
+
+- name: Build Kernel (SDM845)
+  run: |
+    mkdir out
+    cd kernel
+
+    export ARCH=arm64
+    export SUBARCH=arm64
+    export KBUILD_BUILD_USER=linex
+    export KBUILD_BUILD_HOST=sdm845
+
+    export PATH=$HOME/clang/bin:$PATH
+
+    make O=../out ${{ inputs.kernel-config }}
+
+    make -j$(nproc) O=../out \
+    CC=clang \
+    CLANG_TRIPLE=aarch64-linux-gnu- \
+    CROSS_COMPILE=aarch64-linux-android- \
+    CROSS_COMPILE_ARM32=arm-linux-androideabi-
+
+- name: Pack AnyKernel3
+  run: |
+    git clone ${{ inputs.AK3 }} AnyKernel3
+    rm -rf AnyKernel3/.git
+
+    if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+      cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+    elif [ -f out/arch/arm64/boot/Image.gz ]; then
+      cp out/arch/arm64/boot/Image.gz AnyKernel3/
+    fi
+
+- name: Upload
+  uses: actions/upload-artifact@v4
+  with:
+    name: ${{ inputs.name }}
+    path: AnyKernel3/*
