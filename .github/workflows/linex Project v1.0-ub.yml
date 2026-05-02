@@ -70,7 +70,7 @@ jobs:
     - name: Setup
       run: |
          sudo apt-get update
-         sudo apt-get install--no-install-recommends -y\ git curl bc bison flex make clang llvm lld gcc g++ zip python3 aria2 wget ca-certificates \ binutils binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi libssl-dev libelf-dev
+         sudo apt-get install -y git curl bc bison flex make clang llvm lld
     - name: Setup Kernel
       run: |
          git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
