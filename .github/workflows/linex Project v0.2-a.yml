@@ -48,27 +48,27 @@ jobs:
       run: | 
           sudo apt-get update --fix-missing && sudo apt-get install -y git curl bc bison flex make clang llvm lld binutils-aarch64-linux-gnu gcc-arm-linux-gnueabi gcc-arm-linux-gnueabihf libssl-dev libelf-dev python3 aria2 && \
           mkdir -p $HOME/gcc-64 $HOME/gcc-32 $HOME/clang $GITHUB_WORKSPACE/out && \
-
           aria2c -o gcc-aarch64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz && \
           tar -C $HOME/gcc-64 -zxf gcc-aarch64.tar.gz && \
-
           aria2c -o gcc-arm.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz && \
           tar -C $HOME/gcc-32 -zxf gcc-arm.tar.gz && \
-
           aria2c -o aosp-clang.tar.gz https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz && \
           tar -C $HOME/clang -zxf aosp-clang.tar.gz && \
-
           git clone --depth=1 ${{ inputs.kernel-source }} -b ${{ inputs.kernel-branch }} kernel-dir && cd kernel-dir && \
-
           export KBUILD_BUILD_USER=linex && \
           export KBUILD_BUILD_HOST=project && \
           export ARCH=arm64 && \
           export SUBARCH=arm64 && \
           export PATH=$HOME/clang/bin:$HOME/gcc-64/bin:$HOME/gcc-32:$PATH && \
-
+          export CROSS_COMPILE_ARM32=arm-linux-androideabi- && \
           make O=../out ARCH=arm64 olddefconfig && \
           make O=../out ARCH=arm64 ${{ inputs.kernel-config }} && \
-          make -j$(nproc) O=../out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- LLVM=1 LLVM_IAS=1
+          make -j$(nproc) O=../out CC=clang \
+          CLANG_TRIPLE=aarch64-linux-gnu- \
+          CROSS_COMPILE=aarch64-linux-android- \
+          CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+          LLVM=1 LLVM_IAS=1
+      
     - name: AnyKernel3
       run: |
           git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
