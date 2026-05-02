@@ -1,98 +1,130 @@
-# linex Project
+# linex Project - Build Kernel Poco F1 (SDM845)
 name: linex Project v0.2-a
+
 on:
   workflow_dispatch:
     inputs:
       ubuntu:
-        description: 'Run on'
+        description: 'Runner'
         default: 'ubuntu-latest'
         required: true
         type: string
       name:
-        description: 'Name'
+        description: 'Kernel Name'
         default: '4.9-beryllium'
         required: true
         type: string
       kernel-source:
-        description: 'kernel-source'
+        description: 'Kernel Source'
         default: 'https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git'
         required: true
         type: string
       kernel-branch:
-        description: 'kernel-branch'
+        description: 'Kernel Branch'
         default: 'ten'
         required: true
         type: string
       kernel-config:
-        description: 'kernel-config'
+        description: 'Defconfig'
         default: 'beryllium_defconfig'
         required: true
         type: string
       kernelsu:
-        description: 'KernelSU | false if kernel-source not support'
+        description: 'KernelSU (true/false)'
         default: 'false'
         required: true
         type: string
       compiler:
-        description: 'compiler | gcc|clang|llvm'
+        description: 'Compiler (clang/gcc)'
         default: 'clang'
         required: true
         type: string
+
 jobs:
-  linex-compiler-example:
+  build-kernel:
     runs-on: ${{ inputs.ubuntu }}
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Compile
-      run: | 
-          sudo apt-get update --fix-missing && sudo apt-get install -y git curl bc bison flex make clang llvm lld binutils-aarch64-linux-gnu gcc-arm-linux-gnueabi gcc-arm-linux-gnueabihf libssl-dev libelf-dev python3 aria2 && \
-          mkdir -p $HOME/gcc-64 $HOME/gcc-32 $HOME/clang $GITHUB_WORKSPACE/out && \
-          aria2c -o gcc-aarch64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz && \
-          tar -C $HOME/gcc-64 -zxf gcc-aarch64.tar.gz && \
-          aria2c -o gcc-arm.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz && \
-          tar -C $HOME/gcc-32 -zxf gcc-arm.tar.gz && \
-          aria2c -o aosp-clang.tar.gz https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz && \
-          tar -C $HOME/clang -zxf aosp-clang.tar.gz && \
-          git clone --depth=1 ${{ inputs.kernel-source }} -b ${{ inputs.kernel-branch }} kernel-dir && cd kernel-dir && \
-          export KBUILD_BUILD_USER=linex && \
-          export KBUILD_BUILD_HOST=project && \
-          export ARCH=arm64 && \
-          export SUBARCH=arm64 && \
-          export PATH=$HOME/clang/bin:$HOME/gcc-64/bin:$HOME/gcc-32:$PATH && \
-          export CROSS_COMPILE_ARM32=arm-linux-androideabi- && \
-          make O=../out ARCH=arm64 olddefconfig && \
-          make O=../out ARCH=arm64 ${{ inputs.kernel-config }} && \
-          make -j$(nproc) O=../out CC=clang \
-          CLANG_TRIPLE=aarch64-linux-gnu- \
-          CROSS_COMPILE=aarch64-linux-android- \
-          CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-          LLVM=1 LLVM_IAS=1
-      
-    - name: AnyKernel3
-      run: |
-          git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
-          rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md AnyKernel3/modules AnyKernel3/patch AnyKernel3/ramdisk
-          if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
-            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [[ -f out/arch/arm64/boot/Image-dtb ]]; then
-            cp out/arch/arm64/boot/Image-dtb AnyKernel3/Image-dtb
-          elif [[ -f out/arch/arm64/boot/Image.gz ]]; then
-            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
-          elif [[ -f out/arch/arm64/boot/Image ]]; then
-            cp out/arch/arm64/boot/Image AnyKernel3/Image
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update --fix-missing
+          sudo apt-get install -y git curl bc bison flex make clang llvm lld \
+            binutils-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            libssl-dev libelf-dev python3 aria2 zip
+
+      - name: Setup Toolchains
+        run: |
+          mkdir -p $HOME/toolchains/clang $HOME/toolchains/gcc64 $HOME/toolchains/gcc32
+          
+          echo "Downloading AOSP Clang..."
+          aria2c -x16 -o clang.tar.gz https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r1/clang-r510928.tar.gz
+          tar -C $HOME/toolchains/clang -zxf clang.tar.gz
+          
+          echo "Downloading GCC 4.9..."
+          aria2c -x16 -o gcc64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
+          tar -C $HOME/toolchains/gcc64 -zxf gcc64.tar.gz
+          
+          aria2c -x16 -o gcc32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
+          tar -C $HOME/toolchains/gcc32 -zxf gcc32.tar.gz
+
+      - name: Clone Kernel Source
+        run: |
+          git clone --depth=1 ${{ inputs.kernel-source }} -b ${{ inputs.kernel-branch }} kernel-dir
+          cd kernel-dir
+
+      - name: Build Kernel
+        working-directory: ./kernel-dir
+        run: |
+          export KBUILD_BUILD_USER="linex"
+          export KBUILD_BUILD_HOST="github"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          
+          export PATH=$HOME/toolchains/clang/bin:$HOME/toolchains/gcc64/bin:$HOME/toolchains/gcc32/bin:$PATH
+          export CROSS_COMPILE=aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          
+          echo "Using defconfig: ${{ inputs.kernel-config }}"
+          
+          make O=../out ARCH=arm64 ${{ inputs.kernel-config }}
+          
+          if [[ "${{ inputs.kernelsu }}" == "true" ]]; then
+            echo "KernelSU enabled (patch manually if needed)"
           fi
-          if [ -f out/arch/arm64/boot/dtbo.img ]; then
-            cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
+          
+          make -j$(nproc) O=../out \
+            CC=clang \
+            LLVM=1 LLVM_IAS=1 \
+            ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_ARM32=arm-linux-androideabi-
+
+      - name: Prepare AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          cd AnyKernel3
+          rm -rf .git .github LICENSE README.md modules patch ramdisk
+          
+          # Copy kernel image
+          if [[ -f ../out/arch/arm64/boot/Image.gz-dtb ]]; then
+            cp ../out/arch/arm64/boot/Image.gz-dtb Image.gz-dtb
+          elif [[ -f ../out/arch/arm64/boot/Image.gz ]]; then
+            cp ../out/arch/arm64/boot/Image.gz Image.gz
+          elif [[ -f ../out/arch/arm64/boot/Image ]]; then
+            cp ../out/arch/arm64/boot/Image Image
           fi
-    - name: Upload
-      run: |
-          mkdir Upload
-          cp -rf AnyKernel3/* Upload
-    - id: Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: "${{ inputs.name }}"
-        path: Upload/*
-        
-# Enjoy Your Life....
+          
+          # Copy DTBO if exists
+          if [[ -f ../out/arch/arm64/boot/dtbo.img ]]; then
+            cp ../out/arch/arm64/boot/dtbo.img dtbo.img
+          fi
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.name }}
+          path: AnyKernel3/*
+          retention-days: 30
