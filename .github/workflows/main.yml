@@ -1,7 +1,7 @@
 name: linext Compiler SDM845
 
 on:
-workflow_dispatch:
+  workflow_dispatch:
 inputs:
 ubuntu:
 default: ubuntu-latest
