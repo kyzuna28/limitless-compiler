@@ -89,17 +89,23 @@ jobs:
           cd kernel-dir
           export ARCH=arm64
           export SUBARCH=arm64
-          export KBUILD_BUILD_USER=linex
-          export KBUILD_BUILD_HOST=project
           export LLVM=1
           export LLVM_IAS=1
-          make O=../out ${{ inputs.kernel-config }}
+          export KBUILD_BUILD_USER=linex
+          export KBUILD_BUILD_HOST=project
+          export KBUILD_COMPAT_VDSO=n
+          make O=../out beryllium_defconfig
           make -j$(nproc) O=../out \
           CC=clang \
+          LLVM=1 \
+          LLVM_IAS=1 \
+          AS=llvm-as \
+          LD=ld.lld \
+          AR=llvm-ar \
+          NM=llvm-nm \
+          STRIP=llvm-strip \
           CLANG_TRIPLE=aarch64-linux-gnu- \
-          CROSS_COMPILE=aarch64-linux-gnu- \
-          CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-          CROSS_COMPILE_COMPAT=arm-linux-androideabi-
+          CROSS_COMPILE=aarch64-linux-gnu-
     - name: AnyKernel3
       run: |
           git clone ${{ inputs.any-kernel3 }} AnyKernel3
