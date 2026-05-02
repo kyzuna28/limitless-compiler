@@ -1,5 +1,6 @@
-# linex Project
+# linex Project - SilverCore Kernel (beryllium)
 name: linex Project v0.2-ub
+
 on:
   workflow_dispatch:
     inputs:
@@ -9,13 +10,8 @@ on:
         required: true
         type: string
       name:
-        description: 'Name'
-        default: '4.9-kernel'
-        required: true
-        type: string
-      apt-get:
-        description: 'apt-get'
-        default: 'sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu'
+        description: 'Kernel Name'
+        default: 'SilverCore-beryllium'
         required: true
         type: string
       kernel-source:
@@ -25,74 +21,101 @@ on:
         type: string
       kernel-branch:
         description: 'kernel-branch'
-        default: 'main'
+        default: 'ten'
         required: true
         type: string
       kernel-config:
         description: 'kernel-config'
-        default: 'sdm845_defconfig'
+        default: 'beryllium_defconfig'
         required: true
         type: string
       kernelsu:
-        description: 'KernelSU | false if kernel-source not support'
+        description: 'KernelSU (true/false)'
         default: 'false'
         required: true
         type: string
       compiler:
-        description: 'compiler | gcc|clang|llvm'
-        default: 'gcc'
+        description: 'compiler (gcc / clang)'
+        default: 'clang'
         required: true
         type: string
+
 jobs:
-  linex-compiler-example:
+  build-kernel:
     runs-on: ${{ inputs.ubuntu }}
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Compile
-      run: |
-         sudo apt-get update
-         ${{ inputs.apt-get }}
-         git clone --depth=1 ${{ inputs.kernel-source }} -b ${{ inputs.kernel-config }} kernel-dir
-         mkdir out -p -v
-         cd kernel-dir
-         if [ ${{ inputs.kernelsu }} != false ]; then
-            rm -rf KernelSU
-            ${{ inputs.kernelsu }}
-         fi
-         export KBUILD_BUILD_USER="linex"
-         export KBUILD_BUILD_HOST="project"
-         if [ ${{ inputs.compiler }} == gcc ]; then
-            make -j$(nproc --all) ${{ inputs.kernel-config }} ARCH=arm64 O=../out all CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
-         elif [ ${{ inputs.compiler }} == clang ]; then
-            make -j$(nproc --all) ${{ inputs.kernel-config }} ARCH=arm64 O=../out all CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CROSS_COMPILE_COMPAT=arm-linux-gnueabi- CC=clang
-         elif [ ${{ inputs.compiler }} == llvm ]; then
-            make -j$(nproc --all) ${{ inputs.kernel-config }} ARCH=arm64 O=../out all CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CROSS_COMPILE_COMPAT=arm-linux-gnueabi- CC=clang LLVM=1 LLVM_IAS=0 AR=llvm-ar NM=llvm-nm STRIP=llvm-strip OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar
-         fi
-    - name: AnyKernel3
-      run: |
-          git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
-          rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md AnyKernel3/modules AnyKernel3/patch AnyKernel3/ramdisk
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update --fix-missing
+          sudo apt-get install -y git curl bc bison flex make clang llvm lld \
+            binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi libssl-dev libelf-dev python3 zip
+
+      - name: Clone Kernel Source
+        run: |
+          git clone --depth=1 ${{ inputs.kernel-source }} -b ${{ inputs.kernel-branch }} kernel-dir
+
+      - name: Compile Kernel
+        working-directory: ./kernel-dir
+        run: |
+          mkdir -p ../../out
+          
+          export KBUILD_BUILD_USER="linex"
+          export KBUILD_BUILD_HOST="project"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          
+          echo "=== Using defconfig: ${{ inputs.kernel-config }} ==="
+          
+          # Generate config
+          make O=../../out ARCH=arm64 ${{ inputs.kernel-config }}
+          
+          if [[ "${{ inputs.kernelsu }}" == "true" ]]; then
+            echo "KernelSU enabled"
+            # Tambahkan patch KernelSU di sini jika diperlukan
+          fi
+          
+          echo "=== Starting build with ${{ inputs.compiler }} ==="
+          
+          if [[ "${{ inputs.compiler }}" == "gcc" ]]; then
+            make -j$(nproc) O=../../out ARCH=arm64 \
+              CROSS_COMPILE=aarch64-linux-gnu- \
+              CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+            
+          else  # clang (default & recommended)
+            make -j$(nproc) O=../../out ARCH=arm64 \
+              CC=clang \
+              CROSS_COMPILE=aarch64-linux-gnu- \
+              CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+              LLVM=1 LLVM_IAS=1
+          fi
+
+      - name: Prepare AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          cd AnyKernel3
+          rm -rf .git .github LICENSE README.md modules patch ramdisk
+          cd ..
+          
+          # Copy kernel image
           if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
             cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [[ -f out/arch/arm64/boot/Image-dtb ]]; then
-            cp out/arch/arm64/boot/Image-dtb AnyKernel3/Image-dtb
           elif [[ -f out/arch/arm64/boot/Image.gz ]]; then
             cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
           elif [[ -f out/arch/arm64/boot/Image ]]; then
             cp out/arch/arm64/boot/Image AnyKernel3/Image
           fi
-          if [ -f out/arch/arm64/boot/dtbo.img ]; then
+          
+          if [[ -f out/arch/arm64/boot/dtbo.img ]]; then
             cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
           fi
-    - name: Upload
-      run: |
-          mkdir Upload
-          cp -rf AnyKernel3/* Upload
-    - id: Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: "${{ inputs.name }}"
-        path: Upload/*
-        
-# Enjoy Your Life....
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.name }}
+          path: AnyKernel3/*
+          retention-days: 30
