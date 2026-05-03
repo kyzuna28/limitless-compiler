@@ -17,13 +17,13 @@ on:
       
       kernel-url:
         description: 'Kernel-url'
-        default: 'https://github.com/Pierre2324/NGK_android_kernel_xiaomi_sdm845.git'
+        default: 'https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git'
         required: true
         type: string
 
       kernel-branch:
         description: 'Kernel-branch'
-        default: 'q-caf-new'
+        default: 'ten'
         required: true
         type: string
 
@@ -98,11 +98,8 @@ jobs:
               STRIP=llvm-strip \
               LLVM=1 \
               LLVM_IAS=0 \
-              KCFLAGS="-fcommon -Qunused-arguments -Wno-everything" \
-              EXTRA_CFLAGS="-fcommon -Qunused-arguments -Wno-everything" \
-              CLANG_TRIPLE=aarch64-linux-gnu- \
-              CROSS_COMPILE=aarch64-linux-gnu- \
-              CROSS_COMPILE_ARM32=arm-linux-gnueabi- 2>&1 | tee $OUT_DIR/build.log
+              KCFLAGS="-fcommon -Qunused-arguments -Wno-everything -mcpu=cortex-a55 -march=armv8.2-a+crypto" \
+              EXTRA_CFLAGS="-fcommon -Qunused-arguments -Wno-everything -mcpu=cortex-a55 -march=armv8.2-a+crypto" \
 
 
     # =========================
