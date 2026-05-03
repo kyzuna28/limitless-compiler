@@ -17,13 +17,13 @@ on:
       
       kernel-url:
         description: 'Kernel-url'
-        default: 'https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git'
+        default: 'https://github.com/Pierre2324/NGK_android_kernel_xiaomi_sdm845.git'
         required: true
         type: string
 
       kernel-branch:
         description: 'Kernel-branch'
-        default: 'ten'
+        default: 'q-caf-new'
         required: true
         type: string
 
