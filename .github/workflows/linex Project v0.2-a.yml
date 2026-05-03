@@ -1,87 +1,128 @@
-name: Build SilverCore Kernel (ten)
+name: linext Compiler v2.9-SID
 
 on:
   workflow_dispatch:
     inputs:
-      name:
-        description: 'Nama Kernel'
-        default: 'SilverCore-beryllium-ten'
+      ubuntu:
+        description: 'Run on'
+        default: 'ubuntu-latest'
         required: true
         type: string
+
+      name:
+        description: 'Name'
+        default: '4.9-kernel'
+        required: true
+        type: string
+      
+      kernel-url:
+        description: 'Kernel-url'
+        default: 'https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git'
+        required: true
+        type: string
+
       kernel-branch:
-        description: 'Branch'
+        description: 'Kernel-branch'
         default: 'ten'
         required: true
         type: string
+
       kernel-config:
-        description: 'Defconfig'
+        description: 'Kernel-config'
         default: 'beryllium_defconfig'
         required: true
         type: string
 
+      AK3:
+        description: 'AnyKernel3'
+        default: 'https://github.com/osm0sis/AnyKernel3'
+        required: true
+        type: string
+
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  linext-24:
+    runs-on: ${{ inputs.ubuntu }}
+    container: 
+      image: debian:sid
+      options: --user root
+
     steps:
-      - uses: actions/checkout@v4
+    # =========================
+    # Checkout
+    # =========================
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y git bc bison flex make python3 libssl-dev libelf-dev \
-            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi binutils-aarch64-linux-gnu \
-            binutils-arm-linux-gnueabi zip
+    # =========================
+    # Setup Packages (FIXED)
+    # =========================
+    - name: Setup Packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+            clang lld llvm \
+            gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi \
+            binutils-aarch64-linux-gnu \
+            binutils-arm-linux-gnueabi \
+            make bc bison flex libssl-dev python3 \
+            git zip curlie build-essential
 
-      - name: Clone Kernel
-        run: git clone --depth=1 https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git -b ${{ inputs.kernel-branch }} kernel-dir
+    # =========================
+    # Kernel Clone (FIXED BRANCH)
+    # =========================
+    - name: Setup Kernel
+      run: |
+        git clone --depth=1 -b ${{ inputs.kernel-branch }} ${{ inputs.kernel-url }} kernel-dir
 
-      - name: Build Kernel
-        working-directory: ./kernel-dir
-        run: |
-          mkdir -p ../../out
-          
-          export KBUILD_BUILD_USER="dzaky"
-          export KBUILD_BUILD_HOST="github"
-          export ARCH=arm64
-          
-          # Fix common issues kernel 4.9
-          sed -i 's/-mfix-cortex-a53-843419//g' arch/arm64/Makefile || true
-          
-          echo "CONFIG_LTO_NONE=y" >> ../../out/.config 2>/dev/null || true
-          
-          echo "=== Defconfig ==="
-          make O=../../out ARCH=arm64 ${{ inputs.kernel-config }}
-          
-          echo "=== Building with GCC ==="
-          make -j$(nproc) O=../../out ARCH=arm64 \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            LD=aarch64-linux-gnu-ld.bfd \
-            AR=aarch64-linux-gnu-ar \
-            NM=aarch64-linux-gnu-nm \
-            OBJCOPY=aarch64-linux-gnu-objcopy \
-            OBJDUMP=aarch64-linux-gnu-objdump \
-            STRIP=aarch64-linux-gnu-strip \
-            KBUILD_CFLAGS+="-Wno-error" \
-            KBUILD_AFLAGS+="-Wno-error"
+    # =========================
+    # Build Kernel
+    # =========================
+    - name: Compile
+      run: |
+        mkdir -p out
+        cd kernel-dir
 
-      - name: Package Kernel
-        run: |
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
-          cd AnyKernel3 && rm -rf .git .github LICENSE README.md modules patch ramdisk && cd ..
-          
-          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
-            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          elif [ -f out/arch/arm64/boot/Image.gz ]; then
-            cp out/arch/arm64/boot/Image.gz AnyKernel3/
-          else
-            cp out/arch/arm64/boot/Image AnyKernel3/
-          fi
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export KBUILD_BUILD_USER="linex"
+        export KBUILD_BUILD_HOST="Project"
 
-      - name: Upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.name }}
-          path: AnyKernel3/*
-          retention-days: 30
-          
+        make -j$(nproc --all) ${{ inputs.kernel-config }} O=out all \
+              CC=clang \
+              LD=ld.lld \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              STRIP=llvm-strip \
+              LLVM=1 \
+              LLVM_IAS=0 \
+              KCFLAGS="-fcommon -Qunused-arguments -Wno-everything" \
+              EXTRA_CFLAGS="-fcommon -Qunused-arguments -Wno-everything" \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              CROSS_COMPILE=aarch64-linux-gnu- \
+              CROSS_COMPILE_ARM32=arm-linux-gnueabi- 2>&1 | tee $OUT_DIR/build.log
+
+
+    # =========================
+    # AnyKernel3
+    # =========================
+    - name: AnyKernel3
+      run: |
+        git clone ${{ inputs.AK3 }} AnyKernel3
+
+        cp out/arch/arm64/boot/Image* AnyKernel3/ 2>/dev/null || true
+        cp out/arch/arm64/boot/dtb* AnyKernel3/ 2>/dev/null || true
+
+        cd AnyKernel3
+        zip -r9 ../kernel.zip *
+
+    # =========================
+    # Upload
+    # =========================
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: "${{ inputs.name }}"
+        path: kernel.zip
