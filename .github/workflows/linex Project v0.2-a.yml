@@ -88,7 +88,7 @@ jobs:
         export KBUILD_BUILD_USER="linex"
         export KBUILD_BUILD_HOST="Project"
 
-        make -j$(nproc --all) ${{ inputs.kernel-config }} O=out all \
+        make -j$(nproc --all) ${{ inputs.kernel-config }} O=out ARCH=arm64 all \
               CC=clang \
               LD=ld.lld \
               AR=llvm-ar \
