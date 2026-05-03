@@ -1,0 +1,149 @@
+name: linext Compiler v2.8-ext
+
+on:
+  workflow_dispatch:
+    inputs:
+      ubuntu:
+        description: 'Run on'
+        default: 'ubuntu-latest'
+        required: true
+        type: string
+
+      name:
+        description: 'Name'
+        default: '4.9-kernel'
+        required: true
+        type: string
+
+      compiler:
+        description: 'Compiler | gcc|clang|llvm'
+        default: 'clang'
+        required: true
+        type: string
+
+      aosp-clang:
+        description: 'Clang URL or false'
+        default: '19'
+        required: true
+        type: string
+
+      kernel-url:
+        description: 'Kernel-url'
+        default: 'https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git'
+        required: true
+        type: string
+
+      kernel-branch:
+        description: 'Kernel-branch'
+        default: 'ten'
+        required: true
+        type: string
+
+      kernel-config:
+        description: 'Kernel-config'
+        default: 'beryllium_defconfig'
+        required: true
+        type: string
+
+      kernelsu:
+        description: 'KernelSU'
+        default: 'false'
+        required: true
+        type: string
+
+      disable-lto:
+        description: 'Disable LTO'
+        default: 'true'
+        required: true
+        type: string
+
+      AK3:
+        description: 'AnyKernel3'
+        default: 'https://github.com/osm0sis/AnyKernel3'
+        required: true
+        type: string
+
+jobs:
+  linext-24:
+    runs-on: ${{ inputs.ubuntu }}
+
+    steps:
+
+    # =========================
+    # Checkout
+    # =========================
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # =========================
+    # Setup Packages (FIXED)
+    # =========================
+    - name: Setup Packages
+      run: |
+        sudo apt update
+        sudo apt install -y git curl wget zip unzip bc bison flex libssl-dev libncurses5-dev python3 clang lld llvm
+
+    # =========================
+    # Kernel Clone (FIXED BRANCH)
+    # =========================
+    - name: Setup Kernel
+      run: |
+        git clone --depth=1 -b ${{ inputs.kernel-branch }} ${{ inputs.kernel-url }} kernel-dir
+
+    # =========================
+    # Setup Clang (FIXED SAFE)
+    # =========================
+    - name: Setup Clang
+      run: |
+        rm -rf clang
+        mkdir -p clang
+        cd clang
+
+        echo "Downloading Clang 19..."
+
+        wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz -O clang.tar.gz
+
+        tar -xf clang.tar.gz
+
+        echo "CLANG_PATH=$PWD" >> $GITHUB_ENV
+        echo "$PWD/bin" >> $GITHUB_PATH
+
+    # =========================
+    # Build Kernel
+    # =========================
+    - name: Compile
+      run: |
+        mkdir -p out
+        cd kernel-dir
+
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export CC=clang
+        export CLANG_TRIPLE=aarch64-linux-gnu-
+        export PATH=$HOME/clang/bin:$PATH
+
+        make ${{ inputs.kernel-config }}
+
+        make -j$(nproc) LLVM=1 LLVM_IAS=1 O=../out 2>&1 | tee build.log
+
+    # =========================
+    # AnyKernel3
+    # =========================
+    - name: AnyKernel3
+      run: |
+        git clone ${{ inputs.AK3 }} AnyKernel3
+
+        cp out/arch/arm64/boot/Image* AnyKernel3/ 2>/dev/null || true
+        cp out/arch/arm64/boot/dtb* AnyKernel3/ 2>/dev/null || true
+
+        cd AnyKernel3
+        zip -r9 ../kernel.zip *
+
+    # =========================
+    # Upload
+    # =========================
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: "${{ inputs.name }}"
+        path: kernel.zip
