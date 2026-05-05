@@ -1,90 +1,99 @@
-name: Kernel Build (Clang 21)
+name: Kernel Build (Beryllium)
 
 on:
   workflow_dispatch:
+  push:
+  pull_request:
 
 jobs:
-  build-kernel:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-22.04
 
     steps:
-    # =========================
-    # Checkout source
-    # =========================
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
 
-    # =========================
-    # Install dependencies
-    # =========================
-    - name: Setup Build Environment
-      run: |
-        sudo apt update
-        sudo apt install -y \
-          git bc bison flex libssl-dev make \
-          clang lld llvm \
-          gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-          python3
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            bc bison flex libssl-dev \
+            build-essential git clang lld llvm \
+            python3 curl wget
 
-    # =========================
-    # Environment variables
-    # =========================
-    - name: Set Env
-      run: |
-        echo "ARCH=arm64" >> $GITHUB_ENV
-        echo "SUBARCH=arm64" >> $GITHUB_ENV
-        echo "KBUILD_BUILD_USER=linex" >> $GITHUB_ENV
-        echo "KBUILD_BUILD_HOST=Project" >> $GITHUB_ENV
+      - name: Setup LLVM toolchain
+        run: |
+          mkdir -p $HOME/llvm
+          curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-22.04.tar.xz -o llvm.tar.xz
+          tar -xf llvm.tar.xz -C $HOME/llvm --strip-components=1
+          echo "$HOME/llvm/bin" >> $GITHUB_PATH
 
-    # =========================
-    # Prepare output dir
-    # =========================
-    - name: Prepare Output
-      run: |
-        mkdir -p out
+      - name: Export build env
+        run: |
+          echo "KBUILD_BUILD_USER=ducky" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=lotsofduck" >> $GITHUB_ENV
+          echo "ARCH=arm64" >> $GITHUB_ENV
+          echo "SUBARCH=arm64" >> $GITHUB_ENV
+          echo "OUT_DIR=out" >> $GITHUB_ENV
 
-        rm -f out/.version \
-              out/include/generated/compile.h \
-              out/init/version.o || true
+      - name: Clean build directory
+        run: |
+          rm -rf out
+          mkdir -p out
 
-    # =========================
-    # Build kernel
-    # =========================
-    - name: Build Kernel
-      run: |
-        echo "--- 🚀 Build Kernel dengan Clang 21 ---"
+      - name: Load defconfig (Beryllium)
+        run: |
+          make O=$OUT_DIR ARCH=arm64 beryllium_defconfig
 
-        make -j$(nproc --all) \
-          O=out \
-          ARCH=arm64 \
-          beryllium_defconfig \
-          CC=clang \
-          LD=ld.lld \
-          LLVM=1 \
-          LLVM_IAS=0 \
-          KCFLAGS="-fcommon -Qunused-arguments -Wno-everything" \
-          CLANG_TRIPLE=aarch64-linux-gnu- \
-          CROSS_COMPILE=aarch64-linux-gnu- \
-          CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-          all
+      - name: Merge config fragments
+        run: |
+          scripts/kconfig/merge_config.sh -m -O $OUT_DIR $OUT_DIR/.config \
+            arch/arm64/configs/vendor/xiaomi/sdm845-common.config \
+            arch/arm64/configs/vendor/xiaomi/beryllium.config
 
-    # =========================
-    # Check build result
-    # =========================
-    - name: Check Output
-      run: |
-        if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
-          echo "✅ Kompilasi Berhasil!"
-        else
-          echo "❌ Build Gagal!"
-          exit 1
-        fi
+      - name: Update config
+        run: |
+          make O=$OUT_DIR ARCH=arm64 olddefconfig
 
-    # =========================
-    # Upload kernel
-    # =========================
-    - name: Upload Kernel
-      uses: actions/upload-artifact@v4
-      with:
-        name: kernel-output
-        path: out/arch/arm64/boot/*
+      - name: Build DTBs
+        run: |
+          make -j$(nproc --all) O=$OUT_DIR ARCH=arm64 dtbs
+
+      - name: Build kernel
+        run: |
+          make -j$(nproc --all) \
+            O=$OUT_DIR \
+            ARCH=arm64 \
+            CC=clang \
+            HOSTCC=clang \
+            HOSTCXX=clang++ \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            READELF=llvm-readelf \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LLVM=1 \
+            LLVM_IAS=1
+
+      - name: Check output
+        run: |
+          if [ -f "$OUT_DIR/arch/arm64/boot/Image.gz-dtb" ]; then
+            echo "===================================="
+            echo "BUILD SUCCESS (Beryllium)"
+            echo "$OUT_DIR/arch/arm64/boot/Image.gz-dtb"
+            echo "===================================="
+          else
+            echo "BUILD FAILED"
+            exit 1
+          fi
+
+      - name: Upload kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: Beryllium-Kernel
+          path: out/arch/arm64/boot/*
