@@ -1,66 +1,85 @@
-name: SilverCore Kernel TEN 2
+name: Build NGK Beryllium Kernel (LLVM20)
 
 on:
   workflow_dispatch:
-    inputs:
-      name:
-        description: 'Nama Output'
-        default: 'SilverCore-ten'
-        required: true
+  push:
+    tags:
+      - "C-*"
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v4
+    runs-on: ubuntu-24.04
 
-      - name: Install Build Dependencies
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git bc bison flex make python3 \
-            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-            binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi \
-            libssl-dev libelf-dev zip
+          sudo apt-get install -y git bc bison flex build-essential libssl-dev libelf-dev python3
 
-      - name: Clone Kernel
-        run: git clone --depth=1 https://github.com/PainKiller3/android_kernel_xiaomi_sdm845 -b ten kernel-dir
-
-      - name: Build
-        working-directory: kernel-dir
+      - name: Setup LLVM Toolchain
         run: |
-          mkdir -p ../out
-          
+          mkdir -p $HOME/llvm-20.1.8-x86_64
+          echo "NOTE: pastikan LLVM sudah tersedia atau cached"
+
+      - name: Clone NGK Kernel (s-caf)
+        run: |
+          git clone -b s-caf https://github.com/Pierre2324/NGK_android_kernel_xiaomi_sdm845.git kernel
+          cd kernel
+          git submodule update --init --recursive
+
+      - name: Build Kernel
+        run: |
+          # ===== TOOLCHAIN =====
+          TL_PATH="$HOME/llvm-20.1.8-x86_64"
+          export PATH="$TL_PATH/bin:$PATH"
+
+          # ===== BUILD INFO =====
+          export KBUILD_BUILD_USER="ducky"
+          export KBUILD_BUILD_HOST="lotsofduck"
+
+          # ===== ARCH =====
           export ARCH=arm64
-          export KBUILD_BUILD_USER="dzaky"
-          export KBUILD_BUILD_HOST="github"
-          
-          # Fix for old kernel
-          sed -i '/-mfix-cortex-a53-843419/d' arch/arm64/Makefile || true
-          
-          echo "=== Defconfig ==="
-          make O=../out beryllium_defconfig
-          
-          echo "=== Building... ==="
-          make -j$(nproc) O=../out \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            LD=aarch64-linux-gnu-ld.bfd \
-            KBUILD_CFLAGS+="-Wno-error -fno-pic" \
-            KBUILD_AFLAGS+="-Wno-error"
+          export SUBARCH=arm64
 
-      - name: AnyKernel3
-        run: |
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
-          cd AnyKernel3
-          rm -rf .git .github LICENSE README.md modules patch ramdisk
-          cd ..
-          
-          cp kernel-dir/../out/arch/arm64/boot/Image.gz* AnyKernel3/ 2>/dev/null || \
-          cp kernel-dir/../out/arch/arm64/boot/Image AnyKernel3/
+          # ===== OUT DIR =====
+          OUT_DIR="out"
 
-      - name: Upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.name }}
-          path: AnyKernel3/
-          
+          # ===== DEFCONFIG =====
+          DEFCONFIG="beryllium_defconfig"
+
+          # ===== THREADS =====
+          PROCS=$(nproc --all)
+
+          # ===== CONFIG FRAGMENTS =====
+          FRAG1="arch/arm64/configs/vendor/xiaomi/sdm845-common.config"
+          FRAG2="arch/arm64/configs/vendor/xiaomi/beryllium.config"
+
+          # ===== MAKE FLAGS =====
+          MAKE_ARGS=(
+            O=$OUT_DIR
+            ARCH=arm64
+            CC=clang
+            HOSTCC=clang
+            HOSTCXX=clang++
+            LD=ld.lld
+            AR=llvm-ar
+            NM=llvm-nm
+            OBJCOPY=llvm-objcopy
+            OBJDUMP=llvm-objdump
+            STRIP=llvm-strip
+            READELF=llvm-readelf
+            CLANG_TRIPLE=aarch64-linux-gnu-
+            CROSS_COMPILE=aarch64-linux-gnu-
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+            LLVM=1
+            LLVM_IAS=1
+          )
+
+          cd kernel
+
+          echo "Cleaning..."
+          rm -rf $OUT_DIR
+          mkdir -p $OUT_DIR
