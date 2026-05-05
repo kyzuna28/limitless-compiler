@@ -1,159 +1,69 @@
-name: "Build kernels"
-
-env:
-  OUT_DIR: "${{ github.workspace }}/out"
+name: "Build Kernel Simple"
 
 on:
   workflow_dispatch:
 
+env:
+  OUT_DIR: ${{ github.workspace }}/out
+  KERNEL_NAME: kernel
+  KERNEL_REPO: https://github.com/LineageOS/android_kernel_xiaomi_sdm845
+  KERNEL_BRANCH: lineage-18.1
+  DEFCONFIG: vendor/beryllium_defconfig
+
 jobs:
-  Set-repos:
-    name: "🐂 Parse repos.json"
-    runs-on: ubuntu-latest
-    outputs:
-      repos: ${{ steps.generate-matrix.outputs.repos }}
-      builddate: ${{ steps.generate-builddate.outputs.builddate }}
-
-    steps:
-      - name: "😄 Checkout"
-        uses: actions/checkout@v3
-
-      - name: "📦 Install jq"
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: "😆 Generate Matrix"
-        id: generate-matrix
-        run: |
-          echo "repos<<EOF" >> $GITHUB_OUTPUT
-          jq -s '[.[][]]' repos*.json >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: "⏰ Set builddate"
-        id: generate-builddate
-        run: echo "builddate=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
-
-  Build-Kernel:
-    name: "🐎 Build kernel"
+  build:
     runs-on: ubuntu-22.04
-    needs: Set-repos
-
-    strategy:
-      max-parallel: 4
-      fail-fast: false
-      matrix:
-        repos: ${{ fromJSON(needs.Set-repos.outputs.repos) }}
-
-    env:
-      WORKSPACE: ${{ github.workspace }}
-      builddate: "${{ needs.Set-repos.outputs.builddate }}"
-
-      KERNEL_NAME: ${{ matrix.repos.kernelSource.name }}
-      KERNEL_REPO: ${{ matrix.repos.kernelSource.repo }}
-      KERNEL_BRANCH: ${{ matrix.repos.kernelSource.branch }}
-      KERNEL_DEVICE: ${{ matrix.repos.kernelSource.device }}
-      DEFCONFIG_NAME: ${{ matrix.repos.kernelSource.defconfig }}
-
-      withKernelSU: ${{ matrix.repos.withKernelSU }}
-      useAnykernel: ${{ matrix.repos.AnyKernel3.use }}
-      release: ${{ matrix.repos.AnyKernel3.release }}
 
     steps:
-      - name: "⭐ Install prerequisites"
+      - name: 📦 Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-          build-essential bc curl git zip ftp \
+          git curl wget zip unzip \
+          bc bison flex make \
           gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-          libssl-dev lftp zstd wget libfl-dev \
-          python3 python-is-python3 \
-          libarchive-tools jq
+          libssl-dev build-essential \
+          python3 python-is-python3 jq
 
-      - name: "⏰ Setup AnyKernel3"
-        if: ${{ env.useAnykernel == 'true' }}
-        env:
-          params: "${{ toJSON(matrix.repos.AnyKernel3) }}"
-        run: |
-          ANYKERNEL_REPO=$(echo $params | jq -r ".repo")
-          ANYKERNEL_BRANCH=$(echo $params | jq -r ".branch")
-          git clone --depth=1 --branch $ANYKERNEL_BRANCH $ANYKERNEL_REPO AnyKernel3
-
-      - name: "🌟 Clone kernel source"
+      - name: 🌟 Clone kernel
         run: |
           git clone --depth=1 --recursive \
-          --branch $KERNEL_BRANCH $KERNEL_REPO $KERNEL_NAME
+          --branch $KERNEL_BRANCH \
+          $KERNEL_REPO \
+          $KERNEL_NAME
 
-      - name: "💫 Get toolchains"
-        env:
-          toolchains: "${{ toJSON(matrix.repos.toolchains) }}"
+      - name: ⚙️ Setup toolchain (clang proton)
         run: |
-          count=$(echo $toolchains | jq 'length')
-          for ((i=0;i<count;i++)); do
-            name=$(echo $toolchains | jq -r ".[$i].name")
-            repo=$(echo $toolchains | jq -r ".[$i].repo")
-            branch=$(echo $toolchains | jq -r ".[$i].branch")
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang clang
 
-            git clone --depth=1 --branch $branch $repo $name
+          echo "$PWD/clang/bin" >> $GITHUB_PATH
 
-            for path in $(echo $toolchains | jq -r ".[$i].binPath[]"); do
-              echo "$WORKSPACE/$name/$path" >> $GITHUB_PATH
-            done
-          done
+      - name: 📁 Prepare output dir
+        run: mkdir -p $OUT_DIR
 
-      - name: "😎 Set args"
-        id: generate-args
-        env:
-          params: "${{ toJSON(matrix.repos.params) }}"
-        run: |
-          ARCH=$(echo $params | jq -r ".ARCH")
-          CC=$(echo $params | jq -r ".CC")
-
-          args="-j$(nproc)"
-
-          mkdir -p $OUT_DIR
-          args="$args O=$OUT_DIR"
-
-          [ "$ARCH" != "null" ] && args="$args ARCH=$ARCH"
-          [ "$CC" != "null" ] && args="$args CC=$WORKSPACE/$CC"
-
-          while read -r ext; do
-            args="$args $ext"
-          done < <(jq -r '.externalCommand | to_entries[] | "\(.key)='$WORKSPACE'/\(.value)"' <<< "$params")
-
-          echo "args=$args" >> $GITHUB_OUTPUT
-          echo "ARCH=$ARCH" >> $GITHUB_OUTPUT
-
-      - name: "😋 Update KernelSU"
-        if: ${{ env.withKernelSU == 'true' }}
+      - name: ⚙️ Build defconfig
         working-directory: ${{ env.KERNEL_NAME }}
         run: |
-          curl -LSs https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh | bash -
+          make ARCH=arm64 O=$OUT_DIR $DEFCONFIG
 
-      - name: "👍 Make defconfig"
+      - name: 🔨 Build kernel
         working-directory: ${{ env.KERNEL_NAME }}
         run: |
-          make ${{ steps.generate-args.outputs.args }} $DEFCONFIG_NAME
+          make -j$(nproc) \
+          ARCH=arm64 \
+          O=$OUT_DIR \
+          CC=clang \
+          CROSS_COMPILE=aarch64-linux-gnu- \
+          CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
-      - name: "🎶 Build kernel"
-        working-directory: ${{ env.KERNEL_NAME }}
-        run: |
-          make ${{ steps.generate-args.outputs.args }}
-
-      - name: "💛 Upload Image"
-        uses: actions/upload-artifact@v3
+      - name: 📦 Upload Image
+        uses: actions/upload-artifact@v4
         with:
-          name: Image-${{ env.KERNEL_DEVICE }}-${{ env.builddate }}
-          path: ${{ env.OUT_DIR }}/arch/${{ steps.generate-args.outputs.ARCH }}/boot/Image
+          name: Image
+          path: ${{ env.OUT_DIR }}/arch/arm64/boot/Image
 
-      - name: "❤️ Pack AnyKernel3"
-        if: ${{ env.useAnykernel == 'true' }}
-        run: |
-          cp $OUT_DIR/arch/${{ steps.generate-args.outputs.ARCH }}/boot/Image.gz-dtb AnyKernel3/ || true
-          cd AnyKernel3
-          zip -r kernel.zip *
-
-      - name: "💾 Upload AnyKernel3"
-        if: ${{ env.useAnykernel == 'true' }}
-        uses: actions/upload-artifact@v3
+      - name: 📦 Upload Image.gz
+        uses: actions/upload-artifact@v4
         with:
-          name: AnyKernel3-${{ env.KERNEL_DEVICE }}-${{ env.builddate }}
-          path: AnyKernel3/*
+          name: Image.gz
+          path: ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz
