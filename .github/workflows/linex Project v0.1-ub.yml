@@ -1,10 +1,7 @@
-name: Build MIUI Kernel 4.9 (Poco F1)
+name: Build NGK Beryllium Kernel (FIXED LLVM)
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "M-*"
 
 jobs:
   build:
@@ -17,7 +14,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git bc bison flex build-essential libssl-dev libelf-dev python3 zip
+          sudo apt-get install -y git bc bison flex build-essential libssl-dev libelf-dev python3 wget
 
       - name: Download Clang (AOSP r530567)
         run: |
@@ -25,10 +22,9 @@ jobs:
           wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz -O clang.tar.gz
           tar -xf clang.tar.gz -C $HOME/clang
 
-      - name: Clone Kernel Source (MIUI 4.9)
+      - name: Clone Kernel (NGK s-caf)
         run: |
-          git clone --depth=1 https://github.com/Pierre2324/NGK_android_kernel_xiaomi_sdm845.git kernel
-          cd kernel
+          git clone -b s-caf https://github.com/Pierre2324/NGK_android_kernel_xiaomi_sdm845.git kernel
 
       - name: Build Kernel
         run: |
@@ -45,34 +41,26 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
 
-          # ===== CROSS =====
-          export CROSS_COMPILE=aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+          # ===== IMPORTANT FIX (NO CROSS COMPILE) =====
+          export CROSS_COMPILE=""
+          export CROSS_COMPILE_ARM32=""
           export CLANG_TRIPLE=aarch64-linux-gnu-
 
-          # ===== DEFCONFIG MIUI 4.9 =====
+          # ===== DEFCONFIG =====
           make beryllium_defconfig
 
+          # ===== FIX CONFIG =====
+          make O=out olddefconfig
+
           # ===== BUILD =====
-          make -j$(nproc) \
-            O=out \
+          make -j$(nproc) O=out \
+            ARCH=arm64 \
             CC=clang \
             LLVM=1 \
             LLVM_IAS=1
 
-      - name: Pack AnyKernel3
-        run: |
-          git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
-
-          cp kernel/out/arch/arm64/boot/Image AnyKernel3/ 2>/dev/null || true
-          cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/ 2>/dev/null || true
-          cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || true
-          cp kernel/out/arch/arm64/boot/dtbo.img AnyKernel3/ 2>/dev/null || true
-
-          rm -rf AnyKernel3/.git AnyKernel3/.github
-
-      - name: Upload Artifact
+      - name: Upload Kernel
         uses: actions/upload-artifact@v4
         with:
-          name: MIUI_4.9_PocoF1_Kernel
-          path: AnyKernel3/*
+          name: NGK_Beryllium_FIXED
+          path: kernel/out/arch/arm64/boot/*
