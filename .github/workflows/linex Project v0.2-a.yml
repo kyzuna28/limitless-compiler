@@ -1,4 +1,4 @@
-name: Kernel Build (Beryllium)
+name: NGK Kernel Build (s-caf)
 
 on:
   workflow_dispatch:
@@ -10,25 +10,28 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout source
+      - name: Checkout NGK kernel (s-caf)
         uses: actions/checkout@v4
+        with:
+          repository: Pierre2324/NGK_android_kernel_xiaomi_sdm845
+          ref: s-caf
 
       - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y \
             bc bison flex libssl-dev \
-            build-essential git clang lld llvm \
+            build-essential git \
+            clang lld llvm \
             python3 curl wget
 
-      - name: Setup LLVM toolchain
+      - name: Setup LLVM (stable)
         run: |
-          mkdir -p $HOME/llvm
-          curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-22.04.tar.xz -o llvm.tar.xz
-          tar -xf llvm.tar.xz -C $HOME/llvm --strip-components=1
-          echo "$HOME/llvm/bin" >> $GITHUB_PATH
+          echo "Using system LLVM"
+          clang --version
+          ld.lld --version
 
-      - name: Export build env
+      - name: Export build environment
         run: |
           echo "KBUILD_BUILD_USER=ducky" >> $GITHUB_ENV
           echo "KBUILD_BUILD_HOST=lotsofduck" >> $GITHUB_ENV
@@ -36,20 +39,36 @@ jobs:
           echo "SUBARCH=arm64" >> $GITHUB_ENV
           echo "OUT_DIR=out" >> $GITHUB_ENV
 
-      - name: Clean build directory
+      - name: Clean build
         run: |
           rm -rf out
           mkdir -p out
 
-      - name: Load defconfig (Beryllium)
+      - name: Detect defconfig
         run: |
-          make O=$OUT_DIR ARCH=arm64 beryllium_defconfig
+          echo "Searching defconfig..."
+          ls arch/arm64/configs | grep -i defconfig || true
 
-      - name: Merge config fragments
+      - name: Load defconfig (auto fallback)
         run: |
-          scripts/kconfig/merge_config.sh -m -O $OUT_DIR $OUT_DIR/.config \
-            arch/arm64/configs/vendor/xiaomi/sdm845-common.config \
-            arch/arm64/configs/vendor/xiaomi/beryllium.config
+          if [ -f arch/arm64/configs/beryllium_defconfig ]; then
+            make O=$OUT_DIR ARCH=arm64 beryllium_defconfig
+          elif [ -f arch/arm64/configs/sdm845_defconfig ]; then
+            make O=$OUT_DIR ARCH=arm64 sdm845_defconfig
+          else
+            echo "No known defconfig found!"
+            exit 1
+          fi
+
+      - name: Merge config fragments (safe)
+        run: |
+          if [ -f arch/arm64/configs/vendor/xiaomi/sdm845-common.config ]; then
+            scripts/kconfig/merge_config.sh -m -O $OUT_DIR $OUT_DIR/.config \
+              arch/arm64/configs/vendor/xiaomi/sdm845-common.config \
+              arch/arm64/configs/vendor/xiaomi/beryllium.config || true
+          else
+            echo "No vendor fragments found, skipping..."
+          fi
 
       - name: Update config
         run: |
@@ -84,7 +103,7 @@ jobs:
         run: |
           if [ -f "$OUT_DIR/arch/arm64/boot/Image.gz-dtb" ]; then
             echo "===================================="
-            echo "BUILD SUCCESS (Beryllium)"
+            echo "NGK BUILD SUCCESS"
             echo "$OUT_DIR/arch/arm64/boot/Image.gz-dtb"
             echo "===================================="
           else
@@ -92,8 +111,8 @@ jobs:
             exit 1
           fi
 
-      - name: Upload kernel
+      - name: Upload kernel artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Beryllium-Kernel
+          name: NGK-Kernel-s-caf
           path: out/arch/arm64/boot/*
