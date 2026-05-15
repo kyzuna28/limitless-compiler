@@ -1,69 +1,76 @@
-name: "Build Kernel Simple"
+name: LawRun SDM845
 
 on:
   workflow_dispatch:
-
-env:
-  OUT_DIR: ${{ github.workspace }}/out
-  KERNEL_NAME: kernel
-  KERNEL_REPO: https://github.com/LineageOS/android_kernel_xiaomi_sdm845
-  KERNEL_BRANCH: lineage-18.1
-  DEFCONFIG: vendor/beryllium_defconfig
+  push:
+    branches: [ "master" ]
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
-      - name: 📦 Install dependencies
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-          git curl wget zip unzip \
-          bc bison flex make \
-          gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-          libssl-dev build-essential \
-          python3 python-is-python3 jq
+          sudo apt update
+          sudo apt install -y \
+          git bc bison flex make clang llvm lld \
+          libssl-dev libelf-dev \
+          gcc-aarch64-linux-gnu \
+          zip unzip python3 wget curl
 
-      - name: 🌟 Clone kernel
+      - name: Setup build env
         run: |
-          git clone --depth=1 --recursive \
-          --branch $KERNEL_BRANCH \
-          $KERNEL_REPO \
-          $KERNEL_NAME
+          echo "ARCH=arm64" >> $GITHUB_ENV
+          echo "SUBARCH=arm64" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_USER=github-actions" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=lawrun-ci" >> $GITHUB_ENV
 
-      - name: ⚙️ Setup toolchain (clang proton)
+      - name: Detect defconfig
         run: |
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang clang
+          echo "Available defconfigs:"
+          ls arch/arm64/configs/
 
-          echo "$PWD/clang/bin" >> $GITHUB_PATH
+          # auto-pick common SDM845 config
+          if [ -f arch/arm64/configs/sdm845_defconfig ]; then
+            echo "DEFCONFIG=sdm845_defconfig" >> $GITHUB_ENV
+          elif [ -f arch/arm64/configs/beryllium_defconfig ]; then
+            echo "DEFCONFIG=beryllium_defconfig" >> $GITHUB_ENV
+          else
+            echo "DEFCONFIG=sdm845_defconfig" >> $GITHUB_ENV
+          fi
 
-      - name: 📁 Prepare output dir
-        run: mkdir -p $OUT_DIR
-
-      - name: ⚙️ Build defconfig
-        working-directory: ${{ env.KERNEL_NAME }}
+      - name: Build defconfig
         run: |
-          make ARCH=arm64 O=$OUT_DIR $DEFCONFIG
+          make O=out ARCH=arm64 $DEFCONFIG
 
-      - name: 🔨 Build kernel
-        working-directory: ${{ env.KERNEL_NAME }}
+      - name: Compile kernel (clang)
         run: |
-          make -j$(nproc) \
+          make -j$(nproc --all) O=out \
           ARCH=arm64 \
-          O=$OUT_DIR \
           CC=clang \
-          CROSS_COMPILE=aarch64-linux-gnu- \
-          CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          LLVM=1 \
+          LLVM_IAS=1 \
+          CROSS_COMPILE=aarch64-linux-gnu-
 
-      - name: 📦 Upload Image
+      - name: Collect output
+        run: |
+          mkdir -p release
+
+          # kernel image
+          cp out/arch/arm64/boot/Image* release/ 2>/dev/null || true
+
+          # dtb (kalau ada)
+          find out/arch/arm64/boot -name "*.dtb" -exec cp {} release/ \; || true
+
+          cd release
+          zip -r9 LawRun-SDM845-Kernel.zip .
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Image
-          path: ${{ env.OUT_DIR }}/arch/arm64/boot/Image
-
-      - name: 📦 Upload Image.gz
-        uses: actions/upload-artifact@v4
-        with:
-          name: Image.gz
-          path: ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz
+          name: LawRun-Kernel-master
+          path: release/LawRun-SDM845-Kernel.zip
