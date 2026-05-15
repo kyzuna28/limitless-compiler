@@ -1,4 +1,5 @@
 # linex Project - Customized for Poco F1 (beryllium)
+# Optimized for MIUI NSE (Android 10)
 name: Poco F1 Kernel Compiler 2.8
 on:
   workflow_dispatch:
@@ -10,7 +11,7 @@ on:
         type: string
       name:
         description: 'Nama File Output'
-        default: 'Kyzuna-Beryllium-Android10'
+        default: 'Kyzuna-Beryllium-NSE'
         required: true
         type: string
       compiler:
@@ -20,7 +21,7 @@ on:
         type: string
       aosp-clang:
         description: 'Clang Version (11/13/14/19/20) atau Link'
-        default: '11' # Clang 11 paling stabil untuk kernel 4.9 Android 10
+        default: '11' # Paling stabil untuk MIUI 12 / Android 10
         required: true
         type: string
       kernel-url:
@@ -35,7 +36,7 @@ on:
         type: string
       kernel-config:
         description: 'Kernel Config (Defconfig)'
-        default: 'beryllium_defconfig' # Defconfig standar Poco F1
+        default: 'beryllium_defconfig'
         required: true
         type: string
       kernelsu:
@@ -61,7 +62,7 @@ jobs:
     - name: Mempersiapkan Lingkungan Build
       run: |
          echo "Building for: Poco F1 (beryllium)"
-         echo "Target OS: MIUI 12 / Android 10"
+         echo "Target ROM: MIUI NSE / Android 10"
          sudo timedatectl set-timezone Asia/Jakarta
 
     - name: Checkout Repository
@@ -70,7 +71,7 @@ jobs:
     - name: Instalasi Paket Dependensi
       run: |
          sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
 
     - name: Optimasi Swap Space
@@ -96,11 +97,11 @@ jobs:
     - name: Setup Clang
       run: |
          mkdir -p $HOME/clang
-         if [ ${{ inputs.aosp-clang }} == "11" ]; then
+         if [ "${{ inputs.aosp-clang }}" = "11" ]; then
              URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz"
-         elif [ ${{ inputs.aosp-clang }} == "13" ]; then
+         elif [ "${{ inputs.aosp-clang }}" = "13" ]; then
              URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-release/clang-r450784d.tar.gz"
-         elif [[ ${{ inputs.aosp-clang }} == http* ]]; then
+         elif [[ "${{ inputs.aosp-clang }}" == http* ]]; then
              URL="${{ inputs.aosp-clang }}"
          else
              URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz"
@@ -112,26 +113,32 @@ jobs:
       run: |
          git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
 
-    - name: Konfigurasi Branding, LTO & KernelSU
+    - name: Konfigurasi Branding, APatch Support, LTO & KernelSU
       run: |
          cd kernel-dir
-         # --- Inject Nama kyzuna (dengan spasi) di Tentang Ponsel ---
-         # Menghapus setting LOCALVERSION bawaan
-         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" kyzuna"/g' arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # Memastikan tidak ada script otomatis yang menambah tanda strip (-)
-         export LOCALVERSION=" kyzuna"
-
+         # --- Branding Setup ---
+         # Set nama ke kyzuna-qgki agar tidak double
+         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" kyzuna-qgki"/g' arch/arm64/configs/${{ inputs.kernel-config }}
+         
+         # --- APatch Support Configuration ---
+         # Menambahkan kallsyms & kprobes agar tidak error analyze_kallsym_info
+         echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         
          # Disable LTO jika diperlukan
-         if [ ${{ inputs.disable-lto }} = true ]; then
+         if [ "${{ inputs.disable-lto }}" = "true" ]; then
              sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
              sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
              echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          fi
+         
          # Setup KernelSU
-         if [ ${{ inputs.kernelsu }} == ksu ]; then
+         if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
-         elif [ ${{ inputs.kernelsu }} == next ]; then
+         elif [ "${{ inputs.kernelsu }}" = "next" ]; then
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
@@ -139,42 +146,49 @@ jobs:
       run: |
          cd kernel-dir
          export PATH=$HOME/clang/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
-         export KBUILD_BUILD_USER="kyzuna"
-         export KBUILD_BUILD_HOST="kyzuna-project"
          
-         # Variabel dasar make
+         # Branding Host/User (@kyy-project)
+         export KBUILD_BUILD_USER="kyy"
+         export KBUILD_BUILD_HOST="kyy-project"
+         
          OPTS="ARCH=arm64 O=../out"
          
-         # Pilih Toolchain
-         if [ ${{ inputs.compiler }} == clang ]; then
+         if [ "${{ inputs.compiler }}" = "clang" ]; then
             OPTS+=" CC=clang CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu-"
-         elif [ ${{ inputs.compiler }} == llvm ]; then
+         elif [ "${{ inputs.compiler }}" = "llvm" ]; then
             OPTS+=" CC=clang LLVM=1 LLVM_IAS=0 CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
          fi
 
-         # Build dengan memaksa LOCALVERSION agar tidak muncul tanda strip otomatis
          make $OPTS ${{ inputs.kernel-config }}
-         make -j$(nproc --all) $OPTS LOCALVERSION=" kyzuna"
+         make -j$(nproc --all) $OPTS
 
     - name: Packaging dengan AnyKernel3
       run: |
           git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
           rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
           
+          # Update kernel string di AnyKernel
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.name }}/g" AnyKernel3/anykernel.sh || true
           
+          # Salin file Boot Image dari folder output (O=../out)
           if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
             cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
           elif [[ -f out/arch/arm64/boot/Image-dtb ]]; then
             cp out/arch/arm64/boot/Image-dtb AnyKernel3/Image-dtb
+          elif [[ -f out/arch/arm64/boot/Image.gz ]]; then
+            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
           else
-            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp out/arch/arm64/boot/Image AnyKernel3/Image
+            cp out/arch/arm64/boot/Image AnyKernel3/Image
           fi
           
           [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || echo "No dtbo found"
+          
+          # Membuat Flashable Zip
+          cd AnyKernel3
+          zip -r9 "../${{ inputs.name }}.zip" * -x .git README.md
 
     - name: Upload Hasil Build
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.name }}"
-        path: AnyKernel3/*
+        name: "${{ inputs.name }}-Flashable"
+        path: "*.zip"
