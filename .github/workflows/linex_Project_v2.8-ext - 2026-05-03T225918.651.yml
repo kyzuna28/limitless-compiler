@@ -1,35 +1,42 @@
-name: Universal Kernel CI build
+name: Kyzuna Kernel Compiler
 on:
   workflow_dispatch:
     inputs:
       name:
-        description: 'Nama Hasil Build'
-        default: 'PocoF1-Kernel'
+        description: 'Nama Proyek'
+        default: 'Kyzuna-Project'
         required: true
       kernel-url:
         description: 'Link Source Kernel'
-        default: 'https://github.com/linex-17/Limitless.git'
+        default: 'https://github.com/linex-17/Kyzuna.git'
         required: true
       kernel-branch:
-        description: 'Nama Branch (Bisa diubah sendiri)'
+        description: 'Nama Branch'
         default: 'main'
         required: true
       kernel-config:
-        description: 'File Defconfig (Bisa diubah sendiri)'
+        description: 'File Defconfig'
         default: 'beryllium_defconfig'
         required: true
       compiler:
-        description: 'Pilih Compiler (clang / gcc / llvm)'
+        description: 'Pilih Toolchain (clang/gcc/llvm)'
         default: 'clang'
         type: choice
         options:
         - clang
         - gcc
         - llvm
-      aosp-clang:
-        description: 'Versi Clang (Gunakan 11 untuk Android 10)'
+      clang-version:
+        description: 'Versi Clang (11 paling stabil untuk Android 10)'
         default: '11'
         required: true
+      disable-lto:
+        description: 'Matikan LTO? (True untuk stabilitas build)'
+        default: 'true'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
       kernelsu:
         description: 'Pasang KernelSU?'
         default: 'ksu'
@@ -43,7 +50,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Cleanup & Setup Environment
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Persiapan Environment
       run: |
          sudo apt-get update
          sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev
@@ -52,31 +62,44 @@ jobs:
     - name: Download Toolchains
       run: |
          mkdir -p $HOME/gcc-64 $HOME/gcc-32 $HOME/clang
-         
-         # GCC 4.9 untuk AARCH64 & ARM32 (Wajib ada untuk kernel 4.9)
+         # Download AOSP GCC 4.9
          aria2c -q -o gcc64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
          tar -C $HOME/gcc-64 -zxf gcc64.tar.gz
          aria2c -q -o gcc32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
          tar -C $HOME/gcc-32 -zxf gcc32.tar.gz
          
-         # Clang Setup (Hanya didownload jika user pilih clang atau llvm)
+         # Download Clang berdasarkan versi pilihan
          if [ "${{ inputs.compiler }}" != "gcc" ]; then
-            if [ "${{ inputs.aosp-clang }}" == "11" ]; then
-               URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz"
-            else
-               URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz"
-            fi
+            case "${{ inputs.clang-version }}" in
+              "11") URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz" ;;
+              "13") URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-release/clang-r450784d.tar.gz" ;;
+              "14") URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android14-release/clang-r487747c.tar.gz" ;;
+              *) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz" ;;
+            esac
             aria2c -q -o clang.tar.gz "$URL"
             tar -C $HOME/clang -zxf clang.tar.gz
          fi
 
     - name: Clone Kernel Source
-      run: |
-         git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+      run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
 
-    - name: Setup KernelSU
+    - name: Patching Branding & KernelSU
       run: |
          cd kernel-dir
+         # Branding 'kyzuna' di About Phone
+         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-kyzuna"/g' arch/arm64/configs/${{ inputs.kernel-config }}
+         if ! grep -q "CONFIG_LOCALVERSION=" arch/arm64/configs/${{ inputs.kernel-config }}; then
+            echo 'CONFIG_LOCALVERSION="-kyzuna"' >> arch/arm64/configs/${{ inputs.kernel-config }}
+         fi
+
+         # Konfigurasi LTO
+         if [ "${{ inputs.disable-lto }}" == "true" ]; then
+             sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
+             sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
+             echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         fi
+
+         # Setup KernelSU
          if [ "${{ inputs.kernelsu }}" == "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" == "next" ]; then
@@ -87,41 +110,38 @@ jobs:
       run: |
          cd kernel-dir
          export PATH=$HOME/clang/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
-         
-         # Base Args
          MAKE_OPTS="ARCH=arm64 O=../out"
          
-         # Logic Compiler
-         if [ "${{ inputs.compiler }}" == "clang" ]; then
+         if [ "${{ inputs.compiler }}" == "llvm" ]; then
+            MAKE_OPTS+=" CC=clang LLVM=1 LLVM_IAS=1 AR=llvm-ar NM=llvm-nm LD=ld.lld CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu-"
+         elif [ "${{ inputs.compiler }}" == "clang" ]; then
             MAKE_OPTS+=" CC=clang CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu-"
-         elif [ "${{ inputs.compiler }}" == "llvm" ]; then
-            MAKE_OPTS+=" CC=clang LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
-         elif [ "${{ inputs.compiler }}" == "gcc" ]; then
+         else
             MAKE_OPTS+=" CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
          fi
 
-         # Build Process
          make $MAKE_OPTS ${{ inputs.kernel-config }}
          make -j$(nproc --all) $MAKE_OPTS
 
-    - name: Package with AnyKernel3
+    - name: Packaging AnyKernel3
       run: |
          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
          rm -rf AnyKernel3/.git
+         # Branding anykernel script
+         sed -i "s/kernel.string=.*/kernel.string=${{ inputs.name }} Project/g" AnyKernel3/anykernel.sh
          
-         # Support Poco F1 Image format
+         # Memilih Image yang tepat
          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
             cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-         elif [ -f out/arch/arm64/boot/Image.gz ]; then
-            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
          elif [ -f out/arch/arm64/boot/Image-dtb ]; then
             cp out/arch/arm64/boot/Image-dtb AnyKernel3/Image-dtb
+         else
+            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp out/arch/arm64/boot/Image AnyKernel3/Image
          fi
-         
          [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
 
-    - name: Upload Artifact
+    - name: Upload Kernel Zip
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ inputs.name }}-${{ inputs.compiler }}-${{ inputs.kernel-branch }}
+        name: ${{ inputs.name }}-${{ inputs.compiler }}-Final
         path: AnyKernel3/*
