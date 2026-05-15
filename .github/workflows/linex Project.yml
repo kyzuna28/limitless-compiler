@@ -1,93 +1,107 @@
-# kyzuna-project - Customized for Poco F1 (beryllium)
-name: Kyzuna Kernel Compiler Simple 0.2
+name: Kyzuna Simple Compiler
 on:
   workflow_dispatch:
+    inputs:
+      kernel-url:
+        description: 'Source Kernel'
+        default: 'https://github.com/linex-17/Kyzuna.git'
+        required: true
+      kernel-branch:
+        description: 'Branch'
+        default: 'main'
+        required: true
+      kernel-config:
+        description: 'Defconfig'
+        default: 'beryllium_defconfig'
+        required: true
+      kernelsu:
+        description: 'Pasang KernelSU?'
+        default: 'true'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
+      disable-lto:
+        description: 'Matikan LTO?'
+        default: 'true'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Mempersiapkan Lingkungan Build
+    - name: Persiapan Lingkungan
       run: |
-         echo "Building Kyzuna Kernel for Poco F1"
-         sudo timedatectl set-timezone Asia/Jakarta
          sudo apt-get update
          sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev
+         sudo timedatectl set-timezone Asia/Jakarta
 
-    - name: Checkout Repository
-      uses: actions/checkout@v4
-
-    - name: Setup GCC (Toolchain Pendukung)
+    - name: Setup Toolchains (Clang 12 & GCC 4.9)
       run: |
-         mkdir -p $HOME/gcc-64 $HOME/gcc-32
-         aria2c -o gcc-aarch64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
-         tar -C $HOME/gcc-64 -zxf gcc-aarch64.tar.gz
-         aria2c -o gcc-arm.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
-         tar -C $HOME/gcc-32 -zxf gcc-arm.tar.gz
-
-    - name: Setup AOSP Clang 12
-      run: |
-         mkdir -p $HOME/clang
-         # Mengunduh Clang 12 resmi dari prebuilts Android 12
+         mkdir -p $HOME/gcc-64 $HOME/gcc-32 $HOME/clang
+         # GCC 4.9 untuk pendukung
+         aria2c -o gcc64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
+         tar -C $HOME/gcc-64 -zxf gcc64.tar.gz
+         aria2c -o gcc32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
+         tar -C $HOME/gcc-32 -zxf gcc32.tar.gz
+         # Clang 12 AOSP
          aria2c -o clang.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-12.0.0_r32/clang-r416183b1.tar.gz"
          tar -C $HOME/clang -zxf clang.tar.gz
 
     - name: Clone Kernel Source
-      run: |
-         git clone --depth=1 https://github.com/linex-17/Kyzuna.git -b main kernel-dir
+      run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
 
-    - name: Konfigurasi Nama Kernel & LTO
+    - name: Patching Config
       run: |
          cd kernel-dir
-         # Set Nama khusus dengan spasi agar jadi: 4.9.xxx kyzuna-qgki
-         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" kyzuna-qgki"/g' arch/arm64/configs/beryllium_defconfig
-         if ! grep -q "CONFIG_LOCALVERSION=" arch/arm64/configs/beryllium_defconfig; then
-            echo 'CONFIG_LOCALVERSION=" kyzuna-qgki"' >> arch/arm64/configs/beryllium_defconfig
+         # Inject Nama: 4.9.xxx kyzuna-qgki (dengan spasi depan)
+         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" kyzuna-qgki"/g' arch/arm64/configs/${{ inputs.kernel-config }}
+         
+         # Handle LTO
+         if [ "${{ inputs.disable-lto }}" == "true" ]; then
+             sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
+             sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
+             echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          fi
 
-         # Otomatis matikan LTO untuk mempercepat proses compile dan cegah error Clang 12
-         sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/beryllium_defconfig || true
-         sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/beryllium_defconfig || true
-         echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/beryllium_defconfig
+         # Handle KernelSU
+         if [ "${{ inputs.kernelsu }}" == "true" ]; then
+            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+         fi
 
-         # Tambahkan KernelSU (v0.9.5)
-         curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
-
-    - name: Proses Kompilasi
+    - name: Kompilasi Kernel
       run: |
          cd kernel-dir
          export PATH=$HOME/clang/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
-         export KBUILD_BUILD_USER="kyzuna"
-         export KBUILD_BUILD_HOST="qgki-project"
-         
-         # Opsi Kompilasi Clang 12
          OPTS="ARCH=arm64 O=../out CC=clang CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu-"
+         
+         make $OPTS ${{ inputs.kernel-config }}
+         make -j$(nproc --all) $OPTS LOCALVERSION=" kyzuna-qgki" KBUILD_BUILD_USER="kyzuna" KBUILD_BUILD_HOST="qgki"
 
-         # Generate defconfig dan jalankan kompilasi dengan mengunci LOCALVERSION
-         make $OPTS beryllium_defconfig
-         make -j$(nproc --all) $OPTS LOCALVERSION=" kyzuna-qgki"
-
-    - name: Packaging dengan AnyKernel3
+    - name: Packaging AnyKernel3
       run: |
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
-          rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
-          
-          # Set banner flash di TWRP
-          [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=Kyzuna Kernel - qgki/g" AnyKernel3/anykernel.sh || true
-          
-          # Pindahkan hasil build kernel Poco F1
-          if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
+         git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
+         rm -rf AnyKernel3/.git
+         
+         # Edit anykernel.sh (Banner TWRP)
+         sed -i "s/kernel.string=.*/kernel.string=Kyzuna Kernel 4.9 by qgki/g" AnyKernel3/anykernel.sh
+         sed -i "s/device.name1=.*/device.name1=beryllium/g" AnyKernel3/anykernel.sh
+         
+         # Copy Image & DTBO
+         if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
             cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [[ -f out/arch/arm64/boot/Image-dtb ]]; then
+         elif [ -f out/arch/arm64/boot/Image-dtb ]; then
             cp out/arch/arm64/boot/Image-dtb AnyKernel3/Image-dtb
-          else
+         else
             cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp out/arch/arm64/boot/Image AnyKernel3/Image
-          fi
-          
-          [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || echo "No dtbo found"
+         fi
+         [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
 
-    - name: Upload Hasil Build
+    - name: Upload Kernel
       uses: actions/upload-artifact@v4
       with:
-        name: "Kyzuna-Kernel-4.9-Clang12"
+        name: Kyzuna-qgki-Build
         path: AnyKernel3/*
