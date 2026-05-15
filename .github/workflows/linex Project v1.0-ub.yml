@@ -1,5 +1,6 @@
-# linex Project
-name: linex Project v1.1-ub
+# linex Project - Customized for Poco F1 (beryllium)
+# Version 3.0 Pro - Pure GCC Engine Release
+name: Poco F1 Kernel Compiler 3.0 GCC tes
 on:
   workflow_dispatch:
     inputs:
@@ -8,129 +9,188 @@ on:
         default: 'ubuntu-latest'
         required: true
         type: string
-      name:
-        description: 'Name'
-        default: '4.9-kernel_clang'
+      zip_name:
+        description: 'Nama File ZIP Akhir'
+        default: 'Kyzuna-Beryllium-v3.0'
         required: true
         type: string
-      compiler:
-        description: 'Compiler | gcc|clang|llvm '
-        default: 'clang'
+      kernel_version:
+        description: 'Isi angka (misal 4.19.1) atau biarkan "original" untuk versi asli'
+        default: 'original'
+        required: true
+        type: string
+      kernel_name:
+        description: 'Nama Utama Kernel (Contoh: kyzuna)'
+        default: 'kyzuna'
+        required: true
+        type: string
+      rom_type:
+        description: 'Tipe ROM/Tag (nse / se / dynamic)'
+        default: 'nse'
+        required: true
+        type: string
+      project_name:
+        description: 'Build Project (@nama-project)'
+        default: 'kyy'
         required: true
         type: string
       kernel-url:
-        description: 'Kernel-url'
-        default: 'https://github.com/linex-17/Limitless.git'
+        description: 'Kernel Source URL'
+        default: 'https://github.com/linex-17/Kyzuna.git'
         required: true
         type: string
       kernel-branch:
-        description: 'Kernel-branch'
-        default: 'ten'
+        description: 'Kernel Branch'
+        default: 'main'
         required: true
         type: string
       kernel-config:
-        description: 'Kernel-config'
+        description: 'Kernel Config (Defconfig)'
         default: 'beryllium_defconfig'
         required: true
         type: string
       kernelsu:
-        description: 'KernelSU | false if source not support'
-        default: 'false'
+        description: 'KernelSU (ksu/next/false)'
+        default: 'ksu'
         required: true
         type: string
-      command:
-        description: 'Command+'
-        default: 'false'
+      disable-lto:
+        description: 'Disable LTO'
+        default: 'true'
         required: true
         type: string
-      any-kernel3:
-        description: 'Any-Kernel3'
+      AK3:
+        description: 'AnyKernel3 Template'
         default: 'https://github.com/osm0sis/AnyKernel3'
         required: true
         type: string
-        
+
 jobs:
-  linex-compiler-v1:
+  build:
     runs-on: ${{ inputs.ubuntu }}
     steps:
-    - name: Checkin
+    - name: Mempersiapkan Lingkungan Build
       run: |
-         echo "run-on: ${{ inputs.ubuntu }}"
-         echo "name: ${{ inputs.name }}"
-         echo "compiler: ${{ inputs.compiler }}"
-         echo "kernel-url: ${{ inputs.kernel-url }}"
-         echo "kernel-branch: ${{ inputs.kernel-branch }}"
-         echo "kernel-config: ${{ inputs.kernel-config }}"
-         echo "kernelsu: ${{ inputs.kernelsu }}"
-         echo "command+: ${{ inputs.command }}"
-         echo "any-kernel3: ${{ inputs.any-kernel3 }}"
-         echo "linex Project"
-    - name: Checkout
+         echo "Building Poco F1 Kernel Version 3.0 Pro"
+         sudo timedatectl set-timezone Asia/Jakarta
+
+    - name: Checkout Repository
       uses: actions/checkout@v4
-    - name: Setup
+
+    - name: Instalasi Paket Dependensi
       run: |
          sudo apt-get update
-         sudo apt-get install -y git curl bc bison flex make clang llvm lld binutils-aarch64-linux-gnu
-    - name: Setup Kernel
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison
+         aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
+
+    - name: Optimasi Swap Space (16GB)
       run: |
-         git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
-    - name: Setup KernelSU
-      run: |
-         if [ ${{ inputs.kernelsu }} != false ]; then
-            cd kernel-dir
-            rm -rf KernelSU
-            ${{ inputs.kernelsu }}
-         else
-            echo "KernelSU Disable"
+         if [ -f /bin/swapon ]; then
+             export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
+             sudo swapoff $SWAP_FILE || true
+             sudo rm $SWAP_FILE || true
+             sudo fallocate -l 16G $SWAP_FILE
+             sudo chmod 600 $SWAP_FILE
+             sudo mkswap $SWAP_FILE
+             sudo swapon $SWAP_FILE
          fi
-    - name: Compile
+
+    - name: Setup Toolchains (Pure GCC 4.9 Engine)
       run: |
-          mkdir -p out
-          cd kernel-dir
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export LLVM=1
-          export LLVM_IAS=1
-          export KBUILD_BUILD_USER=linex
-          export KBUILD_BUILD_HOST=project
-          export KBUILD_COMPAT_VDSO=n
-          make O=../out beryllium_defconfig
-          make -j$(nproc) O=../out \
-          CC=clang \
-          LLVM=1 \
-          LLVM_IAS=1 \
-          AS=llvm-as \
-          LD=ld.lld \
-          AR=llvm-ar \
-          NM=llvm-nm \
-          STRIP=llvm-strip \
-          CLANG_TRIPLE=aarch64-linux-gnu- \
-          CROSS_COMPILE=aarch64-linux-gnu- \
-          CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-    - name: AnyKernel3
+         mkdir -p $HOME/gcc-64 $HOME/gcc-32
+         
+         # Ambil Prebuilt GCC Resmi Google Android
+         aria2c -o gcc-64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
+         tar -C $HOME/gcc-64 -zxf gcc-64.tar.gz
+         
+         aria2c -o gcc-32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
+         tar -C $HOME/gcc-32 -zxf gcc-32.tar.gz
+
+    - name: Clone Kernel Source
+      run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+
+    - name: Konfigurasi Patching Otomatis v3.0
       run: |
-          git clone ${{ inputs.any-kernel3 }} AnyKernel3
-          rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md AnyKernel3/modules AnyKernel3/patch AnyKernel3/ramdisk
+         cd kernel-dir
+         
+         # FIX: Transpilasi otomatis script lama python ke arsitektur python3 ubuntu modern
+         if [ -f scripts/gcc-wrapper.py ]; then
+             sed -i 's/print >> sys.stderr, \(.*\)/print(\1, file=sys.stderr)/g' scripts/gcc-wrapper.py
+         fi
+         
+         # Patching Versi Manual
+         if [ "${{ inputs.kernel_version }}" != "original" ] && [ "${{ inputs.kernel_version }}" != "" ]; then
+             sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
+             sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
+             sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
+         fi
+         
+         # Penyesuaian Identitas Defconfig
+         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
+         touch .scmversion
+         export LOCALVERSION=""
+         
+         # Injeksi Fitur Kprobes untuk APatch/KernelSU
+         echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         
+         # Pencegahan Overheat Compiler (LTO Disable)
+         if [ "${{ inputs.disable-lto }}" = "true" ]; then
+             sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
+             sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
+             echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         fi
+         
+         # Framework Rooting Setup
+         if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
+            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+         elif [ "${{ inputs.kernelsu }}" = "next" ]; then
+            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+         fi
+
+    - name: Proses Eksekusi Kompilasi v3.0 Engine
+      run: |
+         cd kernel-dir
+         export PATH=$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
+         
+         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
+         export KBUILD_BUILD_HOST="project-labs"
+         
+         # Ditambahkan HOSTCFLAGS=-fcommon untuk mem-bypass error duplikasi yylloc di Ubuntu 24.04
+         OPTS="ARCH=arm64 O=../out \
+               CROSS_COMPILE=aarch64-linux-android- \
+               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+               HOSTCFLAGS=-fcommon"
+
+         make $OPTS ${{ inputs.kernel-config }}
+         make -k -j$(nproc --all) $OPTS 2>&1 | tee build.log
+         
+         # Crash Handler & Trace Log Catcher
+         if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
+             echo "===================================================="
+             echo "         !!! BUILD GAGAL - CRASH TRACE v3.0 !!!     "
+             echo "===================================================="
+             tail -n 250 build.log
+             exit 1
+         fi
+
+    - name: Pembungkusan Output (AnyKernel3)
+      run: |
+          git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
+          rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
           
-          if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
-            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [[ -f out/arch/arm64/boot/Image-dtb ]]; then
-            cp out/arch/arm64/boot/Image-dtb AnyKernel3/Image-dtb
-          elif [[ -f out/arch/arm64/boot/Image.gz ]]; then
-            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
-          elif [[ -f out/arch/arm64/boot/Image ]]; then
-            cp out/arch/arm64/boot/Image AnyKernel3/Image
-          fi
-          if [ -f out/arch/arm64/boot/dtbo.img ]; then
-            cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
-          fi
-    - name: Upload
-      run: |
-          mkdir Upload
-          cp -rf AnyKernel3/* Upload
-    - id: Artifact
+          [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
+          
+          cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb || cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp out/arch/arm64/boot/Image AnyKernel3/Image
+          [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
+          
+          cd AnyKernel3
+          zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" * -x .git README.md
+
+    - name: Unggah Hasil ZIP
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.name }}"
-        path: Upload/*
-    
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-GCC-v3.0"
+        path: "*.zip"
