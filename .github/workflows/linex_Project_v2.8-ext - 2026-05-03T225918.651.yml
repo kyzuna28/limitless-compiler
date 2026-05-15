@@ -1,6 +1,6 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Optimized for MIUI ROMs (SE/NSE/Dynamic)
-name: Poco F1 Kernel Compiler 2.8
+# Optimized for MIUI/Custom ROMs (Pure GCC Edition)
+name: Poco F1 Kernel Compiler 2.8 GCC Final
 on:
   workflow_dispatch:
     inputs:
@@ -11,7 +11,7 @@ on:
         type: string
       zip_name:
         description: 'Nama File ZIP Akhir'
-        default: 'Kyzuna-Beryllium'
+        default: 'Kyzuna-Beryllium-GCC'
         required: true
         type: string
       kernel_version:
@@ -32,16 +32,6 @@ on:
       project_name:
         description: 'Build Project (@nama-project)'
         default: 'kyy'
-        required: true
-        type: string
-      compiler:
-        description: 'Compiler | gcc|clang|llvm'
-        default: 'clang'
-        required: true
-        type: string
-      aosp-clang:
-        description: 'Clang Version (11/13/14/19/20) atau Link'
-        default: '11'
         required: true
         type: string
       kernel-url:
@@ -81,7 +71,7 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build
       run: |
-         echo "Building for: Poco F1 (beryllium)"
+         echo "Building for: Poco F1 (beryllium) via Pure GCC"
          sudo timedatectl set-timezone Asia/Jakarta
 
     - name: Checkout Repository
@@ -105,24 +95,17 @@ jobs:
              sudo swapon $SWAP_FILE
          fi
 
-    - name: Setup Toolchains
+    - name: Setup Toolchains (Pure GCC 4.9 Setup)
       run: |
-         mkdir -p $HOME/gcc-64 $HOME/gcc-32 $HOME/clang
-         # GCC 4.9 for Kernel 4.9
+         mkdir -p $HOME/gcc-64 $HOME/gcc-32
+         
+         # GCC 64-bit untuk arsitektur AArch64
          aria2c -o gcc-64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
          tar -C $HOME/gcc-64 -zxf gcc-64.tar.gz
+         
+         # GCC 32-bit untuk arsitektur ARM32/kompatibilitas driver
          aria2c -o gcc-32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
          tar -C $HOME/gcc-32 -zxf gcc-32.tar.gz
-         # Clang
-         if [ "${{ inputs.aosp-clang }}" = "11" ]; then
-             URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz"
-         elif [[ "${{ inputs.aosp-clang }}" == http* ]]; then
-             URL="${{ inputs.aosp-clang }}"
-         else
-             URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz"
-         fi
-         aria2c -o clang.tar.gz "$URL"
-         tar -C $HOME/clang -zxf clang.tar.gz
 
     - name: Clone Kernel Source
       run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
@@ -141,10 +124,10 @@ jobs:
              echo "Using original kernel version from source."
          fi
          
-         # 2. Branding Localversion (kyzuna-nse, etc)
+         # 2. Branding Localversion
          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # 3. Clean Versioning (No '+' or '-dirty')
+         # 3. Clean Versioning
          touch .scmversion
          export LOCALVERSION=""
          
@@ -154,7 +137,7 @@ jobs:
          echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # 5. LTO Logic
+         # 5. LTO Logic (Dinonaktifkan demi stabilitas GCC)
          if [ "${{ inputs.disable-lto }}" = "true" ]; then
              sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
              sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
@@ -168,34 +151,48 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-    - name: Proses Kompilasi
+    - name: Proses Kompilasi (Pure GCC 4.9)
       run: |
          cd kernel-dir
-         export PATH=$HOME/clang/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
+         export PATH=$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
-         # Branding Host/User (@project-project)
+         # Branding Host/User (@project-labs)
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-         export KBUILD_BUILD_HOST="${{ inputs.project_name }}-project"
+         export KBUILD_BUILD_HOST="project-labs"
          
-         OPTS="ARCH=arm64 O=../out"
-         if [ "${{ inputs.compiler }}" = "clang" ]; then
-            OPTS+=" CC=clang CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu-"
-         elif [ "${{ inputs.compiler }}" = "llvm" ]; then
-            OPTS+=" CC=clang LLVM=1 LLVM_IAS=0 CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
+         # Opsi Argumen Kompilator Murni GCC
+         OPTS="ARCH=arm64 O=../out \
+               CROSS_COMPILE=aarch64-linux-android- \
+               CROSS_COMPILE_ARM32=arm-linux-androideabi-"
+
+         echo "Membentuk konfigurasi defconfig..."
+         make $OPTS ${{ inputs.kernel-config }}
+         
+         echo "Memulai kompilasi kernel (Log dialihkan ke build.log)..."
+         # Menggunakan flag -k (keep-going) agar semua error terkumpul di build.log
+         make -k -j$(nproc --all) $OPTS 2>&1 | tee build.log
+         
+         # Verifikasi Hasil Build Image
+         if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
+             echo "===================================================="
+             echo "         !!! PROSES KOMPILASI GAGAL !!!             "
+             echo "===================================================="
+             echo "Menampilkan 200 baris log terakhir yang berisi error:"
+             echo "----------------------------------------------------"
+             tail -n 200 build.log
+             echo "----------------------------------------------------"
+             exit 1
          fi
 
-         make $OPTS ${{ inputs.kernel-config }}
-         make -j$(nproc --all) $OPTS
-
-    - name: Packaging
+    - name: Packaging (AnyKernel3)
       run: |
           git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
           rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
           
-          # Inject ZIP name to AK3
+          # Inject nama ZIP ke anykernel.sh
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           
-          # Copying Image
+          # Salin Image Hasil Kompilasi
           cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb || cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp out/arch/arm64/boot/Image AnyKernel3/Image
           [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
           
@@ -205,5 +202,5 @@ jobs:
     - name: Upload Hasil Build
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Build"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Build-Final"
         path: "*.zip"
