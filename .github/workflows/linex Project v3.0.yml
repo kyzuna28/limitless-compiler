@@ -8,18 +8,28 @@ on:
         default: 'ubuntu-latest'
         required: true
         type: string
-      name:
-        description: 'Nama File ZIP'
+      zip_name:
+        description: 'Nama File ZIP Akhir'
         default: 'Kyzuna-Beryllium'
         required: true
         type: string
+      kernel_version:
+        description: 'Versi Angka (Contoh: 4.9.239 atau 4.9.337)'
+        default: '4.9.239'
+        required: true
+        type: string
+      kernel_name:
+        description: 'Nama Utama Kernel (Contoh: kyzuna, silvercore, dsb)'
+        default: 'kyzuna'
+        required: true
+        type: string
       rom_type:
-        description: 'ROM Type (se / nse / gaming)'
+        description: 'Tipe ROM/Tag (Contoh: nse, se, dynamic)'
         default: 'nse'
         required: true
         type: string
       project_name:
-        description: 'Build Project Name (Akan jadi @nama-project)'
+        description: 'Build Project (@nama-project)'
         default: 'kyy'
         required: true
         type: string
@@ -68,11 +78,6 @@ jobs:
   build:
     runs-on: ${{ inputs.ubuntu }}
     steps:
-    - name: Mempersiapkan Lingkungan Build
-      run: |
-         echo "Target: Poco F1 (beryllium)"
-         sudo timedatectl set-timezone Asia/Jakarta
-
     - name: Checkout Repository
       uses: actions/checkout@v4
 
@@ -97,12 +102,10 @@ jobs:
     - name: Setup GCC & Clang
       run: |
          mkdir -p $HOME/gcc-64 $HOME/gcc-32 $HOME/clang
-         # GCC Support
          aria2c -o gcc-64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
          tar -C $HOME/gcc-64 -zxf gcc-64.tar.gz
          aria2c -o gcc-32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
          tar -C $HOME/gcc-32 -zxf gcc-32.tar.gz
-         # Clang Logic
          if [ "${{ inputs.aosp-clang }}" = "11" ]; then
              URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz"
          elif [[ "${{ inputs.aosp-clang }}" == http* ]]; then
@@ -119,16 +122,25 @@ jobs:
     - name: Konfigurasi Branding & APatch Fix
       run: |
          cd kernel-dir
-         # Nama di HP: 4.9.x kyzuna-nse (atau kyzuna-se)
-         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" kyzuna-${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
+         # 1. Force Kernel Version
+         sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
+         sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
+         sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
          
-         # APatch Fix (Kallsyms & Kprobes)
+         # 2. Localversion (nama-tag) -> Contoh: kyzuna-nse
+         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
+         
+         # 3. Matikan auto-plus (+)
+         touch .scmversion
+         export LOCALVERSION=""
+
+         # 4. APatch Support (Wajib)
          echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # LTO & KernelSU Logic
+         # 5. LTO & KernelSU Logic
          [ "${{ inputs.disable-lto }}" = "true" ] && (sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }}; echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}) || true
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
@@ -140,8 +152,6 @@ jobs:
       run: |
          cd kernel-dir
          export PATH=$HOME/clang/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
-         
-         # Custom User & Host dari Input UI
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="${{ inputs.project_name }}-project"
          
@@ -157,17 +167,14 @@ jobs:
       run: |
           git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
           rm -rf AnyKernel3/.git AnyKernel3/.github
-          sed -i "s/kernel.string=.*/kernel.string=${{ inputs.name }}/g" AnyKernel3/anykernel.sh || true
-          
-          # Copy Image
+          sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb || cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp out/arch/arm64/boot/Image AnyKernel3/Image
           [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
-          
           cd AnyKernel3
-          zip -r9 "../${{ inputs.name }}-${{ inputs.rom_type }}.zip" *
+          zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" *
 
     - name: Upload Build
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.name }}-${{ inputs.rom_type }}"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}"
         path: "*.zip"
