@@ -1,180 +1,162 @@
 # linex Project - Customized for Poco F1 (beryllium)
+# Version 2.8 Pro - Balanced Stability & Advanced Options
 name: Poco F1 Kernel Compiler 3.0
 on:
   workflow_dispatch:
     inputs:
-      ubuntu:
-        description: 'Run on'
-        default: 'ubuntu-latest'
-        required: true
-        type: string
       zip_name:
-        description: 'Nama File ZIP Akhir'
+        description: 'Nama File ZIP'
         default: 'Kyzuna-Beryllium'
         required: true
-        type: string
       kernel_version:
-        description: 'Versi Angka (Contoh: 4.9.239 atau 4.9.337)'
-        default: '4.9.239'
+        description: 'Versi (angka/original)'
+        default: 'original'
         required: true
-        type: string
       kernel_name:
-        description: 'Nama Utama Kernel (Contoh: kyzuna, silvercore, dsb)'
+        description: 'Nama Utama (Contoh: kyzuna)'
         default: 'kyzuna'
         required: true
-        type: string
       rom_type:
-        description: 'Tipe ROM/Tag (Contoh: nse, se, dynamic)'
+        description: 'Tag ROM'
         default: 'nse'
-        required: true
-        type: string
+        type: choice
+        options:
+        - nse
+        - se
+        - dynamic
       project_name:
-        description: 'Build Project (@nama-project)'
+        description: 'Build Project (@nama)'
         default: 'kyy'
         required: true
-        type: string
       compiler:
-        description: 'Compiler | gcc|clang|llvm'
-        default: 'clang'
-        required: true
-        type: string
-      aosp-clang:
-        description: 'Clang Version (11/13/14/19/20) atau Link'
-        default: '11'
-        required: true
-        type: string
-      kernel-url:
-        description: 'Kernel Source URL'
-        default: 'https://github.com/linex-17/Kyzuna.git'
-        required: true
-        type: string
-      kernel-branch:
-        description: 'Kernel Branch'
-        default: 'main'
-        required: true
-        type: string
-      kernel-config:
-        description: 'Kernel Config (Defconfig)'
-        default: 'beryllium_defconfig'
-        required: true
-        type: string
-      kernelsu:
-        description: 'KernelSU (ksu/next/false)'
+        description: 'Compiler Pro (AOSP Clang 11 paling stabil)'
+        default: 'aosp-clang'
+        type: choice
+        options:
+        - aosp-clang
+        - proton-clang
+        - azure-clang
+      lto_type:
+        description: 'LTO Optimization (Thin paling stabil)'
+        default: 'thin'
+        type: choice
+        options:
+        - thin
+        - full
+        - none
+      kernelsu_version:
+        description: 'Root Method'
         default: 'ksu'
-        required: true
-        type: string
-      disable-lto:
-        description: 'Disable LTO'
-        default: 'true'
-        required: true
-        type: string
-      AK3:
-        description: 'AnyKernel3 Template'
-        default: 'https://github.com/osm0sis/AnyKernel3'
-        required: true
-        type: string
+        type: choice
+        options:
+        - ksu
+        - next
+        - false
 
 jobs:
   build:
-    runs-on: ${{ inputs.ubuntu }}
+    runs-on: ubuntu-latest
     steps:
-    - name: Checkout Repository
+    - name: Checkout Source
       uses: actions/checkout@v4
 
-    - name: Instalasi Paket Dependensi
+    - name: Setup Build Environment
       run: |
-         sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison
-         aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
+         sudo apt-get update && sudo apt-get install -y bc aria2 zip tar libssl-dev flex bison lld llvm make
+         sudo timedatectl set-timezone Asia/Jakarta
 
-    - name: Optimasi Swap Space
+    - name: Download Toolchains (Stable Hybrid)
       run: |
-         if [ -f /bin/swapon ]; then
-             export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
-             sudo swapoff $SWAP_FILE || true
-             sudo rm $SWAP_FILE || true
-             sudo fallocate -l 16G $SWAP_FILE
-             sudo chmod 600 $SWAP_FILE
-             sudo mkswap $SWAP_FILE
-             sudo swapon $SWAP_FILE
+         mkdir -p $HOME/tc $HOME/gcc64 $HOME/gcc32
+         
+         # GCC 4.9 Tetap Wajib untuk stabilitas kernel 4.9 (Beryllium)
+         aria2c -q -o gcc64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
+         tar -C $HOME/gcc64 -zxf gcc64.tar.gz
+         aria2c -q -o gcc32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
+         tar -C $HOME/gcc32 -zxf gcc32.tar.gz
+         
+         # Compiler Picker
+         if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
+            URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz"
+         elif [ "${{ inputs.compiler }}" = "proton-clang" ]; then
+            URL="https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
+         elif [ "${{ inputs.compiler }}" = "azure-clang" ]; then
+            URL="https://gitlab.com/Panchajanya1999/azure-clang/-/archive/master/azure-clang-master.tar.gz"
          fi
+         aria2c -q -o tc.tar.gz "$URL"
+         tar -C $HOME/tc -zxf tc.tar.gz
 
-    - name: Setup GCC & Clang
-      run: |
-         mkdir -p $HOME/gcc-64 $HOME/gcc-32 $HOME/clang
-         aria2c -o gcc-64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
-         tar -C $HOME/gcc-64 -zxf gcc-64.tar.gz
-         aria2c -o gcc-32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
-         tar -C $HOME/gcc-32 -zxf gcc-32.tar.gz
-         if [ "${{ inputs.aosp-clang }}" = "11" ]; then
-             URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz"
-         elif [[ "${{ inputs.aosp-clang }}" == http* ]]; then
-             URL="${{ inputs.aosp-clang }}"
-         else
-             URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz"
-         fi
-         aria2c -o clang.tar.gz "$URL"
-         tar -C $HOME/clang -zxf clang.tar.gz
+    - name: Clone Source
+      run: git clone --depth=1 https://github.com/linex-17/Kyzuna.git -b main kernel-dir
 
-    - name: Clone Kernel Source
-      run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
-
-    - name: Konfigurasi Branding & APatch Fix
+    - name: Pro Configuration Engine
       run: |
          cd kernel-dir
-         # 1. Force Kernel Version
-         sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
-         sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
-         sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
+         # 1. Makefile Versioning
+         if [ "${{ inputs.kernel_version }}" != "original" ]; then
+             sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
+             sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
+             sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
+         fi
          
-         # 2. Localversion (nama-tag) -> Contoh: kyzuna-nse
-         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
-         
-         # 3. Matikan auto-plus (+)
+         # 2. Branding (kyzuna-nse, etc)
+         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}"/g' arch/arm64/configs/beryllium_defconfig
          touch .scmversion
-         export LOCALVERSION=""
-
-         # 4. APatch Support (Wajib)
-         echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # 5. LTO & KernelSU Logic
-         [ "${{ inputs.disable-lto }}" = "true" ] && (sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }}; echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}) || true
-         if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
+         # 3. APatch & Stability Fix
+         echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/beryllium_defconfig
+         echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/beryllium_defconfig
+         echo "CONFIG_KPROBES=y" >> arch/arm64/configs/beryllium_defconfig
+         echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/beryllium_defconfig
+         
+         # 4. LTO Logic
+         if [ "${{ inputs.lto_type }}" = "none" ]; then
+             sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/beryllium_defconfig || true
+             sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/beryllium_defconfig || true
+             echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/beryllium_defconfig
+         else
+             [ "${{ inputs.lto_type }}" = "thin" ] && echo "CONFIG_LTO_CLANG_THIN=y" >> arch/arm64/configs/beryllium_defconfig
+             [ "${{ inputs.lto_type }}" = "full" ] && echo "CONFIG_LTO_CLANG=y" >> arch/arm64/configs/beryllium_defconfig
+         fi
+
+         # 5. Root Setup
+         if [ "${{ inputs.kernelsu_version }}" = "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
-         elif [ "${{ inputs.kernelsu }}" = "next" ]; then
+         elif [ "${{ inputs.kernelsu_version }}" = "next" ]; then
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-    - name: Proses Kompilasi
+    - name: Build Execution Pro (Stable Flags)
       run: |
          cd kernel-dir
-         export PATH=$HOME/clang/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
+         export PATH=$HOME/tc/bin:$HOME/gcc64/bin:$HOME/gcc32/bin:$PATH
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="${{ inputs.project_name }}-project"
          
-         OPTS="ARCH=arm64 O=../out"
-         if [ "${{ inputs.compiler }}" = "clang" ]; then
-            OPTS+=" CC=clang CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu-"
-         fi
+         # Arguments untuk memastikan compiler bekerja dengan benar di kernel 4.9
+         args="ARCH=arm64 O=../out \
+              CC=clang \
+              CROSS_COMPILE=aarch64-linux-android- \
+              CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+              CLANG_TRIPLE=aarch64-linux-gnu-"
 
-         make $OPTS ${{ inputs.kernel-config }}
-         make -j$(nproc --all) $OPTS
+         make $args beryllium_defconfig
+         make -j$(nproc --all) $args
 
-    - name: Packaging
+    - name: Smart Packaging
       run: |
-          git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
-          rm -rf AnyKernel3/.git AnyKernel3/.github
-          sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
+          sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh
+          
+          # Cari image hasil build secara otomatis
           cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb || cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp out/arch/arm64/boot/Image AnyKernel3/Image
           [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
+          
           cd AnyKernel3
-          zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" *
+          zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}-Pro.zip" *
 
-    - name: Upload Build
+    - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Build"
         path: "*.zip"
