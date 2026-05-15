@@ -1,5 +1,5 @@
 # linex Project - Customized for Poco F1 (beryllium)
-name: Poco F1 Kernel Compiler
+name: Poco F1 Kernel Compiler 2.4
 on:
   workflow_dispatch:
     inputs:
