@@ -1,55 +1,69 @@
-name: Kernel Build (LawRun SDM845)
+name: LawRun SDM845 Kernel Build
 
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
-  pull_request:
+    branches: [ "master" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source
+      - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y git bc bison flex make clang llvm lld \
-          libssl-dev libelf-dev gcc-aarch64-linux-gnu \
+          sudo apt install -y \
+          git bc bison flex make clang llvm lld \
+          libssl-dev libelf-dev \
+          gcc-aarch64-linux-gnu \
           zip unzip python3 wget curl
 
-      - name: Setup environment
+      - name: Setup env
         run: |
           echo "ARCH=arm64" >> $GITHUB_ENV
           echo "SUBARCH=arm64" >> $GITHUB_ENV
           echo "KBUILD_BUILD_USER=github" >> $GITHUB_ENV
-          echo "KBUILD_BUILD_HOST=actions" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=lawrun-ci" >> $GITHUB_ENV
+
+      - name: Detect defconfig
+        run: |
+          ls arch/arm64/configs/
+
+          if [ -f arch/arm64/configs/beryllium_defconfig ]; then
+            echo "DEFCONFIG=beryllium_defconfig" >> $GITHUB_ENV
+          else
+            echo "DEFCONFIG=sdm845_defconfig" >> $GITHUB_ENV
+          fi
 
       - name: Make defconfig
         run: |
-          make O=out ARCH=arm64 LawRun_defconfig
+          make O=out ARCH=arm64 $DEFCONFIG
 
       - name: Build kernel
         run: |
           make -j$(nproc --all) O=out \
           ARCH=arm64 \
           CC=clang \
-          LLVM=1 LLVM_IAS=1 \
+          LLVM=1 \
+          LLVM_IAS=1 \
           CROSS_COMPILE=aarch64-linux-gnu-
 
-      - name: Package kernel image
+      - name: Package kernel
         run: |
           mkdir -p release
+
           cp out/arch/arm64/boot/Image* release/ 2>/dev/null || true
-          cp out/arch/arm64/boot/dtb* release/ 2>/dev/null || true
+          find out/arch/arm64/boot -name "*.dtb" -exec cp {} release/ \; || true
+
           cd release
-          zip -r9 Kernel-LawRun-sdm845.zip .
+          zip -r9 LawRun-SDM845-Kernel.zip .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: LawRun-Kernel
-          path: release/Kernel-LawRun-sdm845.zip
+          path: release/LawRun-SDM845-Kernel.zip
