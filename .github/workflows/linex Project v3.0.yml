@@ -191,9 +191,9 @@ jobs:
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
-         # Branding Host/User (@project-project)
+         # Branding Host/User (@project-labs)
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-         export KBUILD_BUILD_HOST="${{ inputs.project_name }}labs-project"
+         export KBUILD_BUILD_HOST="project-labs"
          
          args="ARCH=arm64 O=../out \
               CC=clang \
@@ -201,8 +201,24 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu-"
 
+         echo "Membentuk konfigurasi defconfig..."
          make $args ${{ inputs.kernel-config }}
-         make -j$(nproc --all) $args
+         
+         echo "Memulai kompilasi kernel (Log dialihkan ke build.log)..."
+         # Menggunakan flag -k (keep-going) agar semua error terkumpul, output disimpan ke build.log sekaligus ditampilkan real-time
+         make -k -j$(nproc --all) $args 2>&1 | tee build.log
+         
+         # Cek apakah file Image berhasil terbentuk atau proses make menghasilkan error
+         if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
+             echo "===================================================="
+             echo "         !!! PROSES KOMPILASI GAGAL !!!             "
+             echo "===================================================="
+             echo "Menampilkan 200 baris log terakhir yang berisi error:"
+             echo "----------------------------------------------------"
+             tail -n 200 build.log
+             echo "----------------------------------------------------"
+             exit 1
+         fi
 
     - name: Smart Packaging
       run: |
