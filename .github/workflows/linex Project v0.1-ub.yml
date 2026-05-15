@@ -1,36 +1,24 @@
-# linex Project - Customized for Poco F1 (beryllium)
-# Optimized for MIUI/Custom ROMs (Pure GCC Edition)
-name: Poco F1 Kernel Compiler 2.8 GCC Final tes
+name: Poco F1 Kernel Compiler 3.1 GCC Pro tes
 on:
   workflow_dispatch:
     inputs:
-      ubuntu:
-        description: 'Run on'
-        default: 'ubuntu-latest'
-        required: true
-        type: string
       zip_name:
         description: 'Nama File ZIP Akhir'
-        default: 'Kyzuna-Beryllium-GCC'
-        required: true
-        type: string
-      kernel_version:
-        description: 'Isi angka (misal 4.19.1) atau biarkan "original" untuk versi asli'
-        default: 'original'
+        default: 'Kyzuna-Beryllium-v3.1'
         required: true
         type: string
       kernel_name:
-        description: 'Nama Utama Kernel (Contoh: kyzuna)'
+        description: 'Nama Utama Kernel'
         default: 'kyzuna'
         required: true
         type: string
       rom_type:
-        description: 'Tipe ROM/Tag (nse / se / dynamic)'
+        description: 'Tipe ROM (nse / se / dynamic)'
         default: 'nse'
         required: true
         type: string
       project_name:
-        description: 'Build Project (@nama-project)'
+        description: 'Build Project User'
         default: 'kyy'
         required: true
         type: string
@@ -45,167 +33,118 @@ on:
         required: true
         type: string
       kernel-config:
-        description: 'Kernel Config (Defconfig)'
+        description: 'Kernel Defconfig'
         default: 'beryllium_defconfig'
         required: true
         type: string
       kernelsu:
-        description: 'KernelSU (ksu/next/false)'
+        description: 'KernelSU (ksu / next / false)'
         default: 'ksu'
-        required: true
-        type: string
-      disable-lto:
-        description: 'Disable LTO'
-        default: 'true'
-        required: true
-        type: string
-      AK3:
-        description: 'AnyKernel3 Template'
-        default: 'https://github.com/osm0sis/AnyKernel3'
         required: true
         type: string
 
 jobs:
   build:
-    runs-on: ${{ inputs.ubuntu }}
+    runs-on: ubuntu-latest
     steps:
     - name: Mempersiapkan Lingkungan Build
       run: |
-         echo "Building for: Poco F1 (beryllium) via Pure GCC"
          sudo timedatectl set-timezone Asia/Jakarta
+         echo "Memulai Kompilasi Pure GCC Engine untuk Poco F1"
 
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Instalasi Paket Dependensi
+    - name: Solusi Anti-Stuck APT & Instalasi Dependensi
       run: |
-         sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison
+         # Mengurangi beban interaksi apt dan menggunakan opsi timeout ketat
+         sudo rm -rf /var/lib/apt/lists/*
+         sudo apt-get update -o Acquire::ForceIPv4=true -o Acquire::Retries=3
+         sudo apt-get install -o Acquire::ForceIPv4=true -o Acquire::Retries=3 --no-install-recommends -y bc aria2 zip tar libssl-dev flex bison make libelf-dev
+         
+         # Bersihkan Homebrew bawaan untuk menambah free RAM & Storage
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
 
-    - name: Optimasi Swap Space
-      run: |
-         if [ -f /bin/swapon ]; then
-             export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
-             sudo swapoff $SWAP_FILE || true
-             sudo rm $SWAP_FILE || true
-             sudo fallocate -l 16G $SWAP_FILE
-             sudo chmod 600 $SWAP_FILE
-             sudo mkswap $SWAP_FILE
-             sudo swapon $SWAP_FILE
-         fi
-
-    - name: Setup Toolchains (Pure GCC 4.9 Setup)
+    - name: Unduh Google Official GCC 4.9 Toolchains
       run: |
          mkdir -p $HOME/gcc-64 $HOME/gcc-32
          
-         # GCC 64-bit untuk arsitektur AArch64
-         aria2c -o gcc-64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
+         # Unduh via Aria2 dengan 16 koneksi paralel langsung ke server inti Google (Bypass Apt Azure yang macet)
+         aria2c -s 16 -x 16 -k 1M -o gcc-64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
          tar -C $HOME/gcc-64 -zxf gcc-64.tar.gz
          
-         # GCC 32-bit untuk arsitektur ARM32/kompatibilitas driver
-         aria2c -o gcc-32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
+         aria2c -s 16 -x 16 -k 1M -o gcc-32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
          tar -C $HOME/gcc-32 -zxf gcc-32.tar.gz
 
     - name: Clone Kernel Source
       run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
 
-    - name: Konfigurasi Branding, APatch Support, LTO & KernelSU
+    - name: Konfigurasi & Patching Defconfig
       run: |
          cd kernel-dir
          
-         # FIX 1: Python 3 Syntax Fix untuk gcc-wrapper.py (Mengatasi print >> sys.stderr)
+         # Perbaikan script python lawas di lingkungan Ubuntu modern
          if [ -f scripts/gcc-wrapper.py ]; then
-             sed -i 's/print >> sys.stderr, \(.*\)/print(\1, file=sys.stderr)/g' scripts/gcc-wrapper.py
+             sed -i 's/print >> sys.stderr, \(.*\)/print(\1, file=sys.stderr)/g' scripts/gcc-wrapper.py || true
          fi
          
-         # 1. Logika Versi Kernel (Makefile)
-         if [ "${{ inputs.kernel_version }}" != "original" ] && [ "${{ inputs.kernel_version }}" != "" ]; then
-             echo "Manually setting kernel version to: ${{ inputs.kernel_version }}"
-             sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
-             sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
-             sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
-         else
-             echo "Using original kernel version from source."
-         fi
-         
-         # 2. Branding Localversion
-         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
-         
-         # 3. Clean Versioning
+         # Set identitas Kernel ke Defconfig
+         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-${{ inputs.kernel_name }}-${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
          touch .scmversion
-         export LOCALVERSION=""
          
-         # 4. APatch Support Fix (Kallsyms & Kprobes)
-         echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         
-         # 5. LTO Logic (Dinonaktifkan demi stabilitas GCC)
-         if [ "${{ inputs.disable-lto }}" = "true" ]; then
-             sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
-             sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
-             echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         fi
-         
-         # 6. KernelSU / KernelSU-Next
+         # Pemasangan Otomatis Ekosistem Rooting
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-    - name: Proses Kompilasi (Pure GCC 4.9)
+    - name: Proses Eksekusi Kompilasi Kernel
       run: |
          cd kernel-dir
          export PATH=$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
-         # Branding Host/User (@project-labs)
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-         export KBUILD_BUILD_HOST="project-labs"
+         export KBUILD_BUILD_HOST="limitless-labs"
          
-         # FIX 2: Menyuntikkan HOSTCFLAGS="-fcommon" langsung ke argument make untuk mengatasi multiple definition error pada 'yylloc'
+         # Tambahan HOSTCFLAGS=-fcommon untuk mencegah error duplikasi yylloc di Ubuntu 24.04
          OPTS="ARCH=arm64 O=../out \
                CROSS_COMPILE=aarch64-linux-android- \
                CROSS_COMPILE_ARM32=arm-linux-androideabi- \
                HOSTCFLAGS=-fcommon"
 
-         echo "Membentuk konfigurasi defconfig..."
          make $OPTS ${{ inputs.kernel-config }}
+         make -j$(nproc --all) $OPTS 2>&1 | tee build.log
          
-         echo "Memulai kompilasi kernel (Log dialihkan ke build.log)..."
-         make -k -j$(nproc --all) $OPTS 2>&1 | tee build.log
-         
-         # Verifikasi Hasil Build Image
-         if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
+         # Pengecekan Hasil Akhir Kompilasi
+         if [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image ]; then
              echo "===================================================="
-             echo "         !!! PROSES KOMPILASI GAGAL !!!             "
+             echo "       COMPILATION FAILED - SHOWING LAST LOGS       "
              echo "===================================================="
-             echo "Menampilkan 200 baris log terakhir yang berisi error:"
-             echo "----------------------------------------------------"
-             tail -n 200 build.log
-             echo "----------------------------------------------------"
+             tail -n 300 build.log
              exit 1
          fi
 
-    - name: Packaging (AnyKernel3)
+    - name: Pembungkusan Flashable Zip (AnyKernel3)
       run: |
-          git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
           rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
           
-          # Inject nama ZIP ke anykernel.sh
-          [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+              cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+              cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+          else
+              cp out/arch/arm64/boot/Image AnyKernel3/Image
+          fi
           
-          # Salin Image Hasil Kompilasi
-          cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb || cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp out/arch/arm64/boot/Image AnyKernel3/Image
           [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
           
           cd AnyKernel3
-          zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" * -x .git README.md
+          zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" *
 
-    - name: Upload Hasil Build
+    - name: Unggah Hasil Kompilasi
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Build-Final"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-GCC"
         path: "*.zip"
