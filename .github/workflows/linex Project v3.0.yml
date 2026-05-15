@@ -24,6 +24,8 @@ on:
         - nse
         - se
         - dynamic
+        - gki
+        - qgki
       project_name:
         description: 'Build Project (@nama)'
         default: 'kyy'
