@@ -1,158 +1,93 @@
-# linex Project
-name: linex Project v0.2-a
-
+# kyzuna-project - Customized for Poco F1 (beryllium)
+name: Kyzuna Kernel Compiler Simple 0.2
 on:
   workflow_dispatch:
-    inputs:
-      ubuntu:
-        description: 'Run on'
-        default: 'ubuntu-latest'
-        required: true
-        type: string
-
-      name:
-        description: 'Name'
-        default: '4.9-kernel'
-        required: true
-        type: string
-
-      apt-get:
-        description: 'apt-get'
-        default: 'sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu aria2'
-        required: true
-        type: string
-
-      kernel-source:
-        description: 'kernel-source'
-        default: 'https://github.com/linex-17/Limitless.git'
-        required: true
-        type: string
-
-      kernel-branch:
-        description: 'kernel-branch'
-        default: 'main'
-        required: true
-        type: string
-
-      kernel-config:
-        description: 'kernel-config'
-        default: 'xi_defconfig'
-        required: true
-        type: string
-
-      kernelsu:
-        description: 'KernelSU | false if kernel-source not support'
-        default: 'curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.7.6'
-        required: true
-        type: string
-
-      compiler:
-        description: 'compiler | gcc|clang|llvm'
-        default: 'clang'
-        required: true
-        type: string
 
 jobs:
-  linex-compiler-example:
-    runs-on: ${{ inputs.ubuntu }}
-
+  build:
+    runs-on: ubuntu-latest
     steps:
-    - name: Checkout
+    - name: Mempersiapkan Lingkungan Build
+      run: |
+         echo "Building Kyzuna Kernel for Poco F1"
+         sudo timedatectl set-timezone Asia/Jakarta
+         sudo apt-get update
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev
+
+    - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Compile
+    - name: Setup GCC (Toolchain Pendukung)
       run: |
-         sudo apt-get update
-         eval ${{ inputs.apt-get }}
-
-         mkdir -p $HOME/gcc-64
-         aria2c -o gcc-aarch64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
+         mkdir -p $HOME/gcc-64 $HOME/gcc-32
+         aria2c -o gcc-aarch64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
          tar -C $HOME/gcc-64 -zxf gcc-aarch64.tar.gz
-
-         mkdir -p $HOME/gcc-32
-         aria2c -o gcc-arm.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
+         aria2c -o gcc-arm.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
          tar -C $HOME/gcc-32 -zxf gcc-arm.tar.gz
 
+    - name: Setup AOSP Clang 12
+      run: |
          mkdir -p $HOME/clang
-         aria2c -o aosp-clang.tar.gz https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz
-         tar -C $HOME/clang -zxf aosp-clang.tar.gz
+         # Mengunduh Clang 12 resmi dari prebuilts Android 12
+         aria2c -o clang.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-12.0.0_r32/clang-r416183b1.tar.gz"
+         tar -C $HOME/clang -zxf clang.tar.gz
 
-         git clone --depth=1 ${{ inputs.kernel-source }} -b ${{ inputs.kernel-branch }} kernel-dir
-         mkdir -p out
+    - name: Clone Kernel Source
+      run: |
+         git clone --depth=1 https://github.com/linex-17/Kyzuna.git -b main kernel-dir
 
+    - name: Konfigurasi Nama Kernel & LTO
+      run: |
          cd kernel-dir
-
-         if [ "${{ inputs.kernelsu }}" != "false" ]; then
-            rm -rf KernelSU
-            ${{ inputs.kernelsu }}
+         # Set Nama khusus dengan spasi agar jadi: 4.9.xxx kyzuna-qgki
+         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" kyzuna-qgki"/g' arch/arm64/configs/beryllium_defconfig
+         if ! grep -q "CONFIG_LOCALVERSION=" arch/arm64/configs/beryllium_defconfig; then
+            echo 'CONFIG_LOCALVERSION=" kyzuna-qgki"' >> arch/arm64/configs/beryllium_defconfig
          fi
 
-         export KBUILD_BUILD_USER="linex"
-         export KBUILD_BUILD_HOST="project"
+         # Otomatis matikan LTO untuk mempercepat proses compile dan cegah error Clang 12
+         sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/beryllium_defconfig || true
+         sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/beryllium_defconfig || true
+         echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/beryllium_defconfig
 
-         # TOOLCHAIN PATH FIX
+         # Tambahkan KernelSU (v0.9.5)
+         curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+
+    - name: Proses Kompilasi
+      run: |
+         cd kernel-dir
          export PATH=$HOME/clang/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
+         export KBUILD_BUILD_USER="kyzuna"
+         export KBUILD_BUILD_HOST="qgki-project"
+         
+         # Opsi Kompilasi Clang 12
+         OPTS="ARCH=arm64 O=../out CC=clang CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu-"
 
-         if [ "${{ inputs.compiler }}" = "gcc" ]; then
-            make -j$(nproc --all) ${{ inputs.kernel-config }} \
-            ARCH=arm64 O=../out \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- all
+         # Generate defconfig dan jalankan kompilasi dengan mengunci LOCALVERSION
+         make $OPTS beryllium_defconfig
+         make -j$(nproc --all) $OPTS LOCALVERSION=" kyzuna-qgki"
 
-         elif [ "${{ inputs.compiler }}" = "clang" ]; then
-            export CROSS_COMPILE=aarch64-linux-gnu-
-            export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-            export CLANG_TRIPLE=aarch64-linux-gnu-
-            export AS=llvm-as
-
-            make -j$(nproc --all) ${{ inputs.kernel-config }} \
-            ARCH=arm64 O=../out \
-            CC=clang \
-            LLVM=1 \
-            LLVM_IAS=1
-
-         elif [ "${{ inputs.compiler }}" = "llvm" ]; then
-            export CROSS_COMPILE=aarch64-linux-gnu-
-            export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-            export CLANG_TRIPLE=aarch64-linux-gnu-
-            export AS=llvm-as
-
-            make -j$(nproc --all) ${{ inputs.kernel-config }} \
-            ARCH=arm64 O=../out \
-            CC=clang \
-            LLVM=1 \
-            LLVM_IAS=0 \
-            AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
-            OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
-            READELF=llvm-readelf HOSTCC=clang HOSTCXX=clang++
-         fi
-
-    - name: AnyKernel3
+    - name: Packaging dengan AnyKernel3
       run: |
-          git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
-          rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md AnyKernel3/modules AnyKernel3/patch AnyKernel3/ramdisk
-
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
+          rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
+          
+          # Set banner flash di TWRP
+          [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=Kyzuna Kernel - qgki/g" AnyKernel3/anykernel.sh || true
+          
+          # Pindahkan hasil build kernel Poco F1
           if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
-            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
           elif [[ -f out/arch/arm64/boot/Image-dtb ]]; then
-            cp out/arch/arm64/boot/Image-dtb AnyKernel3/
-          elif [[ -f out/arch/arm64/boot/Image.gz ]]; then
-            cp out/arch/arm64/boot/Image.gz AnyKernel3/
-          elif [[ -f out/arch/arm64/boot/Image ]]; then
-            cp out/arch/arm64/boot/Image AnyKernel3/
+            cp out/arch/arm64/boot/Image-dtb AnyKernel3/Image-dtb
+          else
+            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp out/arch/arm64/boot/Image AnyKernel3/Image
           fi
+          
+          [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || echo "No dtbo found"
 
-          if [ -f out/arch/arm64/boot/dtbo.img ]; then
-            cp out/arch/arm64/boot/dtbo.img AnyKernel3/
-          fi
-
-    - name: Upload
-      run: |
-          mkdir Upload
-          cp -rf AnyKernel3/* Upload
-
-    - id: Artifact
+    - name: Upload Hasil Build
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.name }}"
-        path: Upload/*
+        name: "Kyzuna-Kernel-4.9-Clang12"
+        path: AnyKernel3/*
