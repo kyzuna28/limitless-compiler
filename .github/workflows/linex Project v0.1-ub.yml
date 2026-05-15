@@ -30,7 +30,7 @@ jobs:
 
       - name: Make defconfig
         run: |
-          make O=out ARCH=arm64 sdm845_defconfig
+          make O=out ARCH=arm64 LawRun_defconfig
 
       - name: Build kernel
         run: |
