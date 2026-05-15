@@ -1,10 +1,10 @@
-name: Kyzuna Kernel Compiler
+name: Kyzuna Kernel Compiler Final
 on:
   workflow_dispatch:
     inputs:
       name:
-        description: 'Nama Proyek'
-        default: 'Kyzuna-Project'
+        description: 'Nama Kernel'
+        default: 'Kyzuna-Beryllium'
         required: true
       kernel-url:
         description: 'Link Source Kernel'
@@ -19,19 +19,14 @@ on:
         default: 'beryllium_defconfig'
         required: true
       compiler:
-        description: 'Pilih Toolchain (clang/gcc/llvm)'
+        description: 'Pilih Toolchain'
         default: 'clang'
         type: choice
         options:
         - clang
-        - gcc
         - llvm
-      clang-version:
-        description: 'Versi Clang (11 paling stabil untuk Android 10)'
-        default: '11'
-        required: true
       disable-lto:
-        description: 'Matikan LTO? (True untuk stabilitas build)'
+        description: 'Matikan LTO? (True jika build gagal/lambat)'
         default: 'true'
         type: choice
         options:
@@ -50,43 +45,33 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout Repository
+    - name: Cleanup Environment
       uses: actions/checkout@v4
 
-    - name: Persiapan Environment
+    - name: Instalasi Paket Dependensi
       run: |
          sudo apt-get update
          sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev
          sudo timedatectl set-timezone Asia/Jakarta
 
-    - name: Download Toolchains
+    - name: Download Proton Clang (Anti-Stuck)
       run: |
-         mkdir -p $HOME/gcc-64 $HOME/gcc-32 $HOME/clang
-         # Download AOSP GCC 4.9
-         aria2c -q -o gcc64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
-         tar -C $HOME/gcc-64 -zxf gcc64.tar.gz
-         aria2c -q -o gcc32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
-         tar -C $HOME/gcc-32 -zxf gcc32.tar.gz
+         mkdir -p $HOME/clang
+         echo "--- Downloading Proton Clang Toolchain ---"
+         aria2c -x 16 -s 16 -j 16 --summary-interval=5 -o proton-clang.tar.gz "https://gitlab.com/kdrag0n/proton-clang/-/archive/master/proton-clang-master.tar.gz"
          
-         # Download Clang berdasarkan versi pilihan
-         if [ "${{ inputs.compiler }}" != "gcc" ]; then
-            case "${{ inputs.clang-version }}" in
-              "11") URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz" ;;
-              "13") URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android13-release/clang-r450784d.tar.gz" ;;
-              "14") URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android14-release/clang-r487747c.tar.gz" ;;
-              *) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz" ;;
-            esac
-            aria2c -q -o clang.tar.gz "$URL"
-            tar -C $HOME/clang -zxf clang.tar.gz
-         fi
+         echo "--- Extracting Toolchain (Estimasi 1-2 Menit) ---"
+         tar -C $HOME/clang --strip-components=1 -xf proton-clang.tar.gz
+         rm proton-clang.tar.gz
+         echo "--- Toolchain Ready ---"
 
-    - name: Clone Kernel Source
+    - name: Clone Kyzuna Source
       run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
 
     - name: Patching Branding & KernelSU
       run: |
          cd kernel-dir
-         # Branding 'kyzuna' di About Phone
+         # Versi Kernel di Tentang Ponsel: 4.9.xxx-kyzuna
          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-kyzuna"/g' arch/arm64/configs/${{ inputs.kernel-config }}
          if ! grep -q "CONFIG_LOCALVERSION=" arch/arm64/configs/${{ inputs.kernel-config }}; then
             echo 'CONFIG_LOCALVERSION="-kyzuna"' >> arch/arm64/configs/${{ inputs.kernel-config }}
@@ -99,27 +84,35 @@ jobs:
              echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          fi
 
-         # Setup KernelSU
+         # Setup KernelSU (v0.9.5 Stable)
          if [ "${{ inputs.kernelsu }}" == "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" == "next" ]; then
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-    - name: Build Kernel
+    - name: Kompilasi Kernel
       run: |
          cd kernel-dir
-         export PATH=$HOME/clang/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
-         MAKE_OPTS="ARCH=arm64 O=../out"
+         # Proton Clang Path
+         export PATH=$HOME/clang/bin:$PATH
          
+         # Arguments untuk Proton Clang (Sangat Stabil untuk 4.9)
+         MAKE_OPTS="ARCH=arm64 O=../out \
+                    CC=clang \
+                    CROSS_COMPILE=aarch64-linux-gnu- \
+                    CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+                    AR=llvm-ar \
+                    NM=llvm-nm \
+                    OBJCOPY=llvm-objcopy \
+                    OBJDUMP=llvm-objdump \
+                    STRIP=llvm-strip"
+
          if [ "${{ inputs.compiler }}" == "llvm" ]; then
-            MAKE_OPTS+=" CC=clang LLVM=1 LLVM_IAS=1 AR=llvm-ar NM=llvm-nm LD=ld.lld CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu-"
-         elif [ "${{ inputs.compiler }}" == "clang" ]; then
-            MAKE_OPTS+=" CC=clang CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu-"
-         else
-            MAKE_OPTS+=" CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
+            MAKE_OPTS+=" LLVM=1 LLVM_IAS=1"
          fi
 
+         # Mulai Build
          make $MAKE_OPTS ${{ inputs.kernel-config }}
          make -j$(nproc --all) $MAKE_OPTS
 
@@ -127,21 +120,23 @@ jobs:
       run: |
          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
          rm -rf AnyKernel3/.git
-         # Branding anykernel script
-         sed -i "s/kernel.string=.*/kernel.string=${{ inputs.name }} Project/g" AnyKernel3/anykernel.sh
          
-         # Memilih Image yang tepat
+         # Kustomisasi nama kernel di TWRP
+         sed -i "s/kernel.string=.*/kernel.string=${{ inputs.name }} by Kyzuna/g" AnyKernel3/anykernel.sh
+         sed -i "s/device.name1=.*/device.name1=beryllium/g" AnyKernel3/anykernel.sh
+         
+         # Deteksi hasil build Poco F1
          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
             cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
          elif [ -f out/arch/arm64/boot/Image-dtb ]; then
             cp out/arch/arm64/boot/Image-dtb AnyKernel3/Image-dtb
-         else
-            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp out/arch/arm64/boot/Image AnyKernel3/Image
+         elif [ -f out/arch/arm64/boot/Image.gz ]; then
+            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
          fi
          [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
 
-    - name: Upload Kernel Zip
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ inputs.name }}-${{ inputs.compiler }}-Final
+        name: ${{ inputs.name }}-Kyzuna-Build
         path: AnyKernel3/*
