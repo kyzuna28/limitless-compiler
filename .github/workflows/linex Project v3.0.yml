@@ -193,7 +193,7 @@ jobs:
          
          # Branding Host/User (@project-project)
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-         export KBUILD_BUILD_HOST="${{ inputs.project_name }}-project"
+         export KBUILD_BUILD_HOST="${{ inputs.project_name }}labs-project"
          
          args="ARCH=arm64 O=../out \
               CC=clang \
