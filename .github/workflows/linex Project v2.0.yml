@@ -1,76 +1,163 @@
-name: LawRun SDM845
-
+# linex Project - Nebula Old-Guard Edition
+# Specially Optimized for Poco F1 (beryllium) & Kernel 4.9
+name: Poco F1 Kernel Compiler 3.2
 on:
   workflow_dispatch:
-  push:
-    branches: [ "main" ]
+    inputs:
+      zip_name:
+        description: 'Nama File ZIP Akhir'
+        default: 'OldGuard-Beryllium'
+        required: true
+      kernel_version:
+        description: 'Versi Kernel (angka/original)'
+        default: 'original'
+        required: true
+      kernel_name:
+        description: 'Branding Kernel'
+        default: 'oldguard'
+        required: true
+      rom_type:
+        description: 'Target ROM'
+        default: 'nse'
+        type: choice
+        options: [nse, se, dynamic, aosp, miui]
+      compiler:
+        description: 'Engine Compiler (AOSP 11 paling direkomendasikan)'
+        default: 'aosp-clang'
+        type: choice
+        options: [aosp-clang, proton-clang, zyc-clang]
+      opt_level:
+        description: 'Optimization Level (O2 = Stabil, O3 = Speed)'
+        default: 'O2'
+        type: choice
+        options: [O2, O3, Ofast]
+      lto_type:
+        description: 'LTO Mode'
+        default: 'thin'
+        type: choice
+        options: [none, thin, full]
+      kernelsu:
+        description: 'Root Engine'
+        default: 'ksu'
+        type: choice
+        options: [ksu, next, false]
+      kernel_url:
+        description: 'Source URL'
+        default: 'https://github.com/linex-17/Kyzuna.git'
+        required: true
+      kernel_branch:
+        description: 'Branch'
+        default: 'main'
+        required: true
 
 jobs:
-  build:
+  build_engine:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+    - name: Old-Guard Dashboard
+      run: |
+        echo "###############################################################"
+        echo "#                                                             #"
+        echo "#    ___  _     ____     ____ _   _    _    ____  ____        #"
+        echo "#   / _ \| |   |  _ \   / ___| | | |  / \  |  _ \|  _ \       #"
+        echo "#  | | | | |   | | | | | |  _| | | | / _ \ | |_) | | | |      #"
+        echo "#  | |_| | |___| |_| | | |_| | |_| |/ ___ \|  _ <| |_| |      #"
+        echo "#   \___/|_____|____/   \____|\___//_/   \_\_| \_\____/       #"
+        echo "#                                                             #"
+        echo "#            LEGACY KERNEL STABILITY ENGINE 3.0               #"
+        echo "###############################################################"
 
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y \
-          git bc bison flex make clang llvm lld \
-          libssl-dev libelf-dev \
-          gcc-aarch64-linux-gnu \
-          zip unzip python3 wget curl
+    - name: Environment Setup
+      run: |
+         sudo apt-get update && sudo apt-get install -y bc aria2 zip tar libssl-dev flex bison lld llvm make
+         sudo timedatectl set-timezone Asia/Jakarta
 
-      - name: Setup build env
-        run: |
-          echo "ARCH=arm64" >> $GITHUB_ENV
-          echo "SUBARCH=arm64" >> $GITHUB_ENV
-          echo "KBUILD_BUILD_USER=github-actions" >> $GITHUB_ENV
-          echo "KBUILD_BUILD_HOST=lawrun-ci" >> $GITHUB_ENV
+    - name: Fetch Legacy Toolchains (Stable Hybrid)
+      run: |
+         mkdir -p $HOME/tc $HOME/gcc64 $HOME/gcc32
+         # GCC 4.9 Wajib untuk Kernel 4.9 agar tidak bootloop
+         aria2c -q -o gcc64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
+         tar -C $HOME/gcc64 -zxf gcc64.tar.gz
+         aria2c -q -o gcc32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
+         tar -C $HOME/gcc32 -zxf gcc32.tar.gz
+         
+         # Clang Logic
+         if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
+            URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz"
+         elif [ "${{ inputs.compiler }}" = "zyc-clang" ]; then
+            URL="https://github.com/ZyCromerZ/Clang/releases/download/19.0.0-20240902-release/Clang-19.0.0-20240902.tar.gz"
+         else
+            URL="https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
+         fi
+         aria2c -q -o tc.tar.gz "$URL"
+         tar -C $HOME/tc -zxf tc.tar.gz
 
-      - name: Detect defconfig
-        run: |
-          echo "Available defconfigs:"
-          ls arch/arm64/configs/
+    - name: Clone Legacy Source
+      run: git clone --depth=1 ${{ inputs.kernel_url }} -b ${{ inputs.kernel_branch }} kernel-dir
 
-          # auto-pick common SDM845 config
-          if [ -f arch/arm64/configs/sdm845_defconfig ]; then
-            echo "DEFCONFIG=sdm845_defconfig" >> $GITHUB_ENV
-          elif [ -f arch/arm64/configs/beryllium_defconfig ]; then
-            echo "DEFCONFIG=beryllium_defconfig" >> $GITHUB_ENV
-          else
-            echo "DEFCONFIG=sdm845_defconfig" >> $GITHUB_ENV
-          fi
+    - name: Injection Engine (Old Kernel Specialist)
+      run: |
+         cd kernel-dir
+         # 1. Makefile Versioning
+         if [ "${{ inputs.kernel_version }}" != "original" ]; then
+             sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
+             sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
+             sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
+         fi
+         # 2. Hard Branding
+         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}"/g' arch/arm64/configs/beryllium_defconfig
+         touch .scmversion && export LOCALVERSION=""
+         # 3. Security & Stability Patch (APatch Support)
+         echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/beryllium_defconfig
+         echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/beryllium_defconfig
+         echo "CONFIG_KPROBES=y" >> arch/arm64/configs/beryllium_defconfig
+         # 4. Optimization Engine
+         echo "CONFIG_CC_OPTIMIZE_FOR_${{ inputs.opt_level }}=y" >> arch/arm64/configs/beryllium_defconfig
+         if [ "${{ inputs.lto_type }}" != "none" ]; then
+             echo "CONFIG_LTO_CLANG_${{ inputs.lto_type | upper }}=y" >> arch/arm64/configs/beryllium_defconfig
+         else
+             echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/beryllium_defconfig
+         fi
+         # 5. KernelSU Integration
+         if [ "${{ inputs.kernelsu }}" != "false" ]; then
+            KSU_URL="https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh"
+            [ "${{ inputs.kernelsu }}" = "next" ] && KSU_URL="https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh"
+            curl -LSs "$KSU_URL" | bash -s main
+         fi
 
-      - name: Build defconfig
-        run: |
-          make O=out ARCH=arm64 $DEFCONFIG
+    - name: Build Core (Old-Guard Execution)
+      run: |
+         cd kernel-dir
+         export PATH=$HOME/tc/bin:$HOME/gcc64/bin:$HOME/gcc32/bin:$PATH
+         export KBUILD_BUILD_USER="Old-Guard"
+         export KBUILD_BUILD_HOST="Stable-Build"
+         
+         args="ARCH=arm64 O=../out \
+              CC=clang \
+              LD=ld.lld \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              STRIP=llvm-strip \
+              CROSS_COMPILE=aarch64-linux-android- \
+              CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+              CLANG_TRIPLE=aarch64-linux-gnu-"
 
-      - name: Compile kernel (clang)
-        run: |
-          make -j$(nproc --all) O=out \
-          ARCH=arm64 \
-          CC=clang \
-          LLVM=1 \
-          LLVM_IAS=1 \
-          CROSS_COMPILE=aarch64-linux-gnu-
+         make $args beryllium_defconfig
+         make -j$(nproc --all) $args
 
-      - name: Collect output
-        run: |
-          mkdir -p release
+    - name: Smart Packaging (Legacy Support)
+      run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
+          sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }} V3.0/g" AnyKernel3/anykernel.sh
+          # Automatisasi deteksi Image untuk Poco F1
+          cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb || cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp out/arch/arm64/boot/Image AnyKernel3/Image
+          [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
+          cd AnyKernel3 && zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" *
 
-          # kernel image
-          cp out/arch/arm64/boot/Image* release/ 2>/dev/null || true
-
-          # dtb (kalau ada)
-          find out/arch/arm64/boot -name "*.dtb" -exec cp {} release/ \; || true
-
-          cd release
-          zip -r9 LawRun-SDM845-Kernel.zip .
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: LawRun-Kernel-master
-          path: release/LawRun-SDM845-Kernel.zip
+    - name: Finalize Build
+      uses: actions/upload-artifact@v4
+      with:
+        name: "${{ inputs.zip_name }}-Package"
+        path: "*.zip"
