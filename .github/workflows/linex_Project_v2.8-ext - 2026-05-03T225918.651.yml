@@ -93,8 +93,6 @@ jobs:
       run: |
          echo "Building Poco F1 Kernel Version 2.8 Pro Ultimate Final Fix"
          sudo timedatectl set-timezone Asia/Jakarta
-         
-         # Bersihkan bloatware maksimal untuk melegakan RAM & Disk
          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
          sudo docker image prune --all --force
 
@@ -112,7 +110,6 @@ jobs:
          else
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
-         
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
 
     - name: Optimasi Swap Space Tinggi (Anti IO Failure)
@@ -174,42 +171,37 @@ jobs:
       run: |
          cd kernel-dir
          
-         # 1. Logika Versi Kernel (Makefile)
          if [ "${{ inputs.kernel_version }}" != "original" ] && [ "${{ inputs.kernel_version }}" != "" ]; then
              sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
              sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
              sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
          fi
          
-         # 2. Branding Localversion
          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }} 么 ${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # 3. Clean Versioning
          touch .scmversion
          export LOCALVERSION=""
          
-         # FIX SAKTI: Menghapus target DTB QVR-EVT yang rusak/corrupt dari Makefile Qualcomm dts
-         echo "Memotong target DTB QVR yang rusak agar tidak di-compile..."
-         sed -i '/sdm845-v2-qvr-evt.dtb/d' arch/arm64/boot/dts/qcom/Makefile || true
+         # AGGRESSIVE CLEAN-UP: Potong seluruh target QVR rusak dari Makefile DTS Qualcomm
+         echo "Membersihkan seluruh target file VR (QVR) yang rusak dari antrean build..."
+         sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
+         sed -i '/qvr-evt/d' arch/arm64/boot/dts/qcom/Makefile || true
+         sed -i '/qvr-dvt/d' arch/arm64/boot/dts/qcom/Makefile || true
          
-         # Intervensi Ekstra: Menjinakkan Defconfig USB Gadget yang corrupt
          echo "CONFIG_USB_CONFIGFS_F_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_USB_F_QDSS=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # 4. APatch Support Fix
          echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # 5. Disable LTO Logic
          if [ "${{ inputs.disable-lto }}" = "true" ]; then
              sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
              sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
              echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          fi
 
-         # 6. Smart GPU Clock Engine (FIXED TYPO)
          echo "Mengonfigurasi Frekuensi GPU..."
          MIN_HZ=$(($(echo ${{ inputs.gpu_min_clock }}) * 1000000))
          MAX_HZ=$(($(echo ${{ inputs.gpu_max_clock }}) * 1000000))
@@ -221,14 +213,12 @@ jobs:
              find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
          fi
          
-         # 7. KernelSU / KernelSU-Next
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-         # 8. Fix VDSO Assembler Crash (ADAPTIVE AUTOMATION ENGINE)
          echo "Menjinakkan Makefile VDSO secara adaptif..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
@@ -239,15 +229,12 @@ jobs:
              fi
          fi
 
-         # 9. Fix LLVM Objcopy LKDTM Conflict
-         echo "Mematikan modul LKDTM untuk menghindari konflik llvm-objcopy..."
          echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
 
     - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
-         
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
@@ -266,14 +253,12 @@ jobs:
          mkdir -p ../out
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
-         # Hitung & batasi alokasi core CPU biar adil dengan pembagian RAM
          TOTAL_CORES=$(nproc --all)
          if [ $TOTAL_CORES -gt 1 ]; then
              SAFE_CORES=$((TOTAL_CORES - 1))
          else
              SAFE_CORES=1
          fi
-         echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan RAM VM..."
          
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
@@ -303,7 +288,6 @@ jobs:
           
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           
-          # FIXED PATHING: Penarikan berkas biner dialihkan ke luar folder repositori (../out)
           if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
               cp ../out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
           elif [ -f ../out/arch/arm64/boot/Image.gz ]; then
