@@ -186,6 +186,10 @@ jobs:
          touch .scmversion
          export LOCALVERSION=""
          
+         # FIX SAKTI: Menghapus target DTB QVR-EVT yang rusak/corrupt dari Makefile Qualcomm dts
+         echo "Memotong target DTB QVR yang rusak agar tidak di-compile..."
+         sed -i '/sdm845-v2-qvr-evt.dtb/d' arch/arm64/boot/dts/qcom/Makefile || true
+         
          # Intervensi Ekstra: Menjinakkan Defconfig USB Gadget yang corrupt
          echo "CONFIG_USB_CONFIGFS_F_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_USB_F_QDSS=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
@@ -212,7 +216,7 @@ jobs:
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
              sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MIN_HZ>;/g" $TARGET_DTSI || true
          else
-             find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
+             find arch/arm64/boot/dts/ rifle -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
          fi
          
          # 7. KernelSU / KernelSU-Next
