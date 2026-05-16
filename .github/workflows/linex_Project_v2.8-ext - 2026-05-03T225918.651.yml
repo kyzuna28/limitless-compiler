@@ -74,7 +74,7 @@ on:
         type: string
       kernel-branch:
         description: 'Kernel Branch'
-        default: 'lineage-20'
+        default: 'lineage-19.1'
         required: true
         type: string
       kernel-config:
@@ -357,13 +357,19 @@ jobs:
              echo "MEMAKSA GCC EXTERNAL ASSEMBLER (LLVM_IAS=0) UNTUK BYPASS VDSO JUNK LINES..."
              USE_IAS=0
              
-             # INTERVENSI AGRESIF LANGSUNG DI TEMPAT PADA MAKEFILE VDSO
+             # INTERVENSI TOTAL GLOBAL PADA MAKEFILE VDSO
              VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
              if [ -f "$VDSO_MAKEFILE" ]; then
-                 echo "=== MEMBERSIHKAN RANJAU VDSO MAKEFILE UNTUK SDCLANG/ZYCROMER ==="
-                 sed -i '/-cc1as/d' $VDSO_MAKEFILE || true
-                 sed -i '/integrated-as/d' $VDSO_MAKEFILE || true
+                 echo "=== SAPU BERSIH RANJAU DI SELURUH BARIS VDSO MAKEFILE ==="
+                 # Amputasi paksa kata -cc1as dan integrated-as di semua baris secara global
+                 sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
+                 sed -i 's/-no-integrated-as//g' $VDSO_MAKEFILE || true
+                 sed -i 's/-integrated-as//g' $VDSO_MAKEFILE || true
+                 sed -i '/cc1as/d' $VDSO_MAKEFILE || true
+                 
+                 # Suntik paksa flag eksternal assembler ke dalam makro kompilator VDSO
                  sed -i 's/$(CC) $(ccflags-y)/$(CC) -no-integrated-as $(ccflags-y)/g' $VDSO_MAKEFILE || true
+                 sed -i 's/$(CC) $(c_flags)/$(CC) -no-integrated-as $(c_flags)/g' $VDSO_MAKEFILE || true
              fi
          else
              echo "Memicu GCC External Assembler (LLVM_IAS=0) untuk mencegah Broken Pipe..."
