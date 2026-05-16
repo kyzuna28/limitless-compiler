@@ -154,7 +154,7 @@ jobs:
          sudo mkswap /mnt/swapfile
          sudo swapon /mnt/swapfile
 
-    - name: Download Toolchains (Hybrid Setup - STABLE)
+    - name: Download Toolchains (Hybrid Setup - ANTI LINK MATI)
       run: |
          rm -rf $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
          mkdir -p $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
@@ -186,14 +186,54 @@ jobs:
              tar -C $HOME/tmp-tc -zxf toolchain.tar.gz && rm toolchain.tar.gz
              mv $HOME/tmp-tc/*/* $HOME/tc/ 2>/dev/null || mv $HOME/tmp-tc/* $HOME/tc/
              rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
+
+         elif [ "${{ inputs.compiler }}" = "zycromer-clang" ] || [ "${{ inputs.compiler }}" = "zycromer" ]; then
+             echo "Mengunduh ZyCromerZ Clang (Dengan Pengalih Otomatis)..."
+             # Menggunakan mirror rilis Clang 19 buatan ZyCromerZ yang aktif
+             URL="https://github.com/ZyCromerZ/Clang/releases/download/19.0.0-20240502-3/Clang-19.0.0-20240502-3.tar.gz"
+             aria2c -q -o zycromer.tar.gz "$URL" || true
              
-         elif [ "${{ inputs.compiler }}" = "zycromer-clang" ]; then
-             aria2c -q -o zycromer.tar.gz "https://github.com/ZyCromerZ/Clang/releases/download/19.0.0-20240502-3/Clang-19.0.0-20240502-3.tar.gz"
-             tar -C $HOME/tc -zxf zycromer.tar.gz && rm zycromer.tar.gz
+             # FALLBACK ENGINE: Jika tautan di atas mati/kosong, paksa alihkan ke Google Clang Base setara
+             if [ ! -s zycromer.tar.gz ]; then
+                 echo "=== WARNING: Link ZyCromerZ Mati! Dialihkan ke Google AOSP Clang 16/17 ==="
+                 URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r15/clang-r487747c.tar.gz"
+                 aria2c -q -o zycromer.tar.gz "$URL"
+             fi
+             
+             tar -C $HOME/tmp-tc -zxf zycromer.tar.gz && rm zycromer.tar.gz
+             
+             # Penata letak folder adaptif untuk struktur ZyCromerZ
+             Z_BIN=$(find $HOME/tmp-tc -type d -name "bin" | head -n 1)
+             if [ -n "$Z_BIN" ]; then
+                 cp -r $(dirname "$Z_BIN")/* $HOME/tc/
+             else
+                 cp -r $HOME/tmp-tc/* $HOME/tc/ 2>/dev/null || true
+             fi
              rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
 
          elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
-             git clone --depth=1 https://github.com/WeeAris/SDClang.git $HOME/tc
+             echo "Mengunduh SDClang via Tarball (Dengan Pengalih Otomatis)..."
+             # Menggunakan cermin publik berbasis tarbal yang bebas autentikasi login
+             URL="https://github.com/YuuAsuka/sdclang-12/archive/refs/heads/master.tar.gz"
+             aria2c -q -o sdclang.tar.gz "$URL" || true
+             
+             # FALLBACK ENGINE: Jika tautan git/kustom mati, paksa alihkan ke Google Qualcomm Clang Base
+             if [ ! -s sdclang.tar.gz ]; then
+                 echo "=== WARNING: Link SDClang Mati! Dialihkan ke Qualcomm-AOSP Clang Base ==="
+                 URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-12.1.0_r27/clang-r416183b1.tar.gz"
+                 aria2c -q -o sdclang.tar.gz "$URL"
+             fi
+             
+             tar -C $HOME/tmp-tc -zxf sdclang.tar.gz && rm sdclang.tar.gz
+             
+             # Ekstraksi adaptif untuk subfolder SDClang
+             S_BIN=$(find $HOME/tmp-tc -type d -name "bin" | head -n 1)
+             if [ -n "$S_BIN" ]; then
+                 cp -r $(dirname "$S_BIN")/* $HOME/tc/
+             else
+                 cp -r $HOME/tmp-tc/* $HOME/tc/ 2>/dev/null || true
+             fi
+             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
          fi
          rm -rf $HOME/tmp-tc
 
