@@ -305,7 +305,7 @@ jobs:
              exit 1
          fi
          
-   - name: Smart Packaging (SAFE EXTRACTION - FIXED PATH)
+    - name: Smart Packaging (SAFE EXTRACTION - FIXED PATH)
       run: |
           rm -f *.zip
           git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
