@@ -217,28 +217,31 @@ jobs:
          touch .scmversion
          export LOCALVERSION=""
          
-         # Intervensi Tambahan: Menjinakkan Defconfig USB Gadget bawaan msm845
+         # FIX ANTISIPASI: Potong target DTB QVR yang berpotensi rusak di Makefile Qualcomm dts
+         echo "Mengamankan Makefile DTS dari file VR QVR-EVT yang korup..."
+         sed -i '/sdm845-v2-qvr-evt.dtb/d' arch/arm64/boot/dts/qcom/Makefile || true
+         
+         # Intervensi Ekstra: Menjinakkan Defconfig USB Gadget yang corrupt
          echo "CONFIG_USB_CONFIGFS_F_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_USB_F_QDSS=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # 4. APatch & KernelSU Pre-requisites Fix
+         # 4. APatch Support Fix
          echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # 5. Disable LTO Logic Safely
+         # 5. Disable LTO Logic
          if [ "${{ inputs.disable-lto }}" = "true" ]; then
              sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
              sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
-             sed -i 's/CONFIG_THIN_LTO=y/CONFIG_THIN_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
              echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          fi
 
-         # 6. Injection Mesin Frekuensi GPU Custom
+         # 6. Smart GPU Clock Engine
          echo "Mengonfigurasi Frekuensi GPU..."
-         MIN_HZ=$((${{ inputs.gpu_min_clock }} * 1000000))
-         MAX_HZ=$((${{ inputs.gpu_max_clock }} * 1000000))
+         MIN_HZ=$(($(echo ${{ inputs.gpu_min_clock }}) * 1000000))
+         MAX_HZ=$(($(echo ${{ inputs.gpu_max_clock }}) * 1000000))
          TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
          if [ -f "$TARGET_DTSI" ]; then
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
@@ -254,8 +257,8 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-         # 8. Fix VDSO Assembler Crash (Adaptive Automation Engine)
-         echo "Menjinakkan Makefile VDSO..."
+         # 8. Fix VDSO Assembler Crash (ADAPTIVE AUTOMATION ENGINE)
+         echo "Menjinakkan Makefile VDSO secara adaptif..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
              if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ] || [ "${{ inputs.compiler }}" = "sdclang" ]; then
@@ -265,7 +268,7 @@ jobs:
              fi
          fi
 
-         # 9. Fix LLVM Objcopy LKDTM Conflict (Universal Anti Mogok)
+         # 9. Fix LLVM Objcopy LKDTM Conflict
          echo "Mematikan modul LKDTM untuk menghindari konflik llvm-objcopy..."
          echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
@@ -274,7 +277,9 @@ jobs:
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
-         # Logika Pendeteksi Otomatis Integritas Assembler (LLVM_IAS)
+         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
+         export KBUILD_BUILD_HOST="project-labs"
+         
          if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
              if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
                  USE_IAS=0
@@ -290,21 +295,18 @@ jobs:
          mkdir -p ../out
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
-         # Hitung core CPU yang tersedia
+         # 1. HITUNG & BATASI CORE CPU (Sediakan ruang napas untuk RAM VM GitHub)
          TOTAL_CORES=$(nproc --all)
-         
-         # JIKA core lebih dari 1, kurangi 1 core khusus untuk kompilasi driver raksasa agar RAM tidak OOM (Broken Pipe)
          if [ $TOTAL_CORES -gt 1 ]; then
              SAFE_CORES=$((TOTAL_CORES - 1))
          else
              SAFE_CORES=1
          fi
-         echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core untuk keamanan alokasi RAM..."
-
-         # Eksekusi kompilasi dengan membatasi Core + Menyuntikkan Flag pembatas memori Linker
+         echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
+         
+         # 2. EKSEKUSI COMPILATION (Tanpa LD=ld.lld global, tapi kunci flag pembebas RAM ekstra)
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
-              LD=ld.lld \
               AR=llvm-ar \
               NM=llvm-nm \
               OBJCOPY=llvm-objcopy \
@@ -314,8 +316,6 @@ jobs:
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
-              KBUILD_BUILD_USER="${{ inputs.project_name }}" \
-              KBUILD_BUILD_HOST="project-labs" \
               KCFLAGS="-w -Wno-error -Wl,--no-keep-memory -Wl,--reduce-memory-overheads" \
               HOSTCFLAGS="-w -Wno-error" Image.gz dtbs 2>&1 | tee build.log
          
@@ -325,7 +325,6 @@ jobs:
              exit 1
          fi
          
-
     - name: Smart Packaging (SAFE EXTRACTION - FIXED PATH)
       run: |
           rm -f *.zip
@@ -334,24 +333,24 @@ jobs:
           
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           
-          # Pencarian biner dari folder out secara presisi
-          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
-              cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [ -f out/arch/arm64/boot/Image.gz ] && [ -f out/arch/arm64/boot/dts/qcom/sdm845-v2.dtb ]; then
-              cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dts/qcom/sdm845-v2.dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz-dtb
-          elif [ -f out/arch/arm64/boot/Image.gz ] && [ -f out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb ]; then
-              cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz-dtb
-          elif [ -f out/arch/arm64/boot/Image.gz ]; then
-              cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+          # FIX JALUR: Menggunakan path absolut luar '../out' sesuai perintah O=../out saat compile
+          if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
+              cp ../out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
+          elif [ -f ../out/arch/arm64/boot/Image.gz ] && [ -f ../out/arch/arm64/boot/dts/qcom/sdm845-v2.dtb ]; then
+              cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/qcom/sdm845-v2.dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz-dtb
+          elif [ -f ../out/arch/arm64/boot/Image.gz ] && [ -f ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb ]; then
+              cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz-dtb
+          elif [ -f ../out/arch/arm64/boot/Image.gz ]; then
+              cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
           else
-              cp out/arch/arm64/boot/Image AnyKernel3/Image
+              cp ../out/arch/arm64/boot/Image AnyKernel3/Image
           fi
           
-          [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
+          [ -f ../out/arch/arm64/boot/dtbo.img ] && cp ../out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
           
           cd AnyKernel3
           zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" * -x .git README.md
-
+          
     - name: Upload Final Build
       uses: actions/upload-artifact@v4
       with:
