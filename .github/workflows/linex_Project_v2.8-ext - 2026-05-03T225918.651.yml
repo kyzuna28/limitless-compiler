@@ -1,5 +1,5 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 2.8 Final Ultimate - Fix Package Dropped & AOSP Clang Broken Pipe
+# Version 2.8 Ultimate Stable - Perfect Syntax & LTO/GPU Injection Fix
 name: Poco F1 Kernel Compiler 2.8
 on:
   workflow_dispatch:
@@ -205,10 +205,10 @@ jobs:
              echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          fi
 
-         # 6. Smart GPU Clock Engine (Inject Overclock & Downclock)
+         # 6. Smart GPU Clock Engine (Inject Overclock & Downclock) - FIXED SYNTAX
          echo "Menyelaraskan Frekuensi Custom GPU..."
-         MIN_HZ=$((${ inputs.gpu_min_clock }} * 1000000))
-         MAX_HZ=$((${ inputs.gpu_max_clock }} * 1000000))
+         MIN_HZ=$((${{ inputs.gpu_min_clock }} * 1000000))
+         MAX_HZ=$((${{ inputs.gpu_max_clock }} * 1000000))
          TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
          if [ -f "$TARGET_DTSI" ]; then
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
