@@ -1,5 +1,5 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.0 Ultimate Final Fix - Perfect Dropdown & Smart Adaptive Engine
+# Version 3.0 Ultimate Final Fix - Safe RAM, Adaptive Engine & Secure Packaging
 name: Poco F1 Kernel Compiler 3.0
 on:
   workflow_dispatch:
@@ -117,10 +117,14 @@ jobs:
   build:
     runs-on: ${{ inputs.ubuntu }}
     steps:
-    - name: Mempersiapkan Lingkungan Build
+    - name: Mempersiapkan Lingkungan Build & Bersihkan Storage Bloatware
       run: |
          echo "Building Poco F1 Kernel Version 3.0 Pro Ultimate Final Fix"
          sudo timedatectl set-timezone Asia/Jakarta
+         
+         # FIXED: Melegakan space & RAM dari bloatware bawaan Github agar tidak memicu broken pipe di driver qcacld-3.0
+         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+         sudo docker image prune --all --force
 
     - name: Checkout Workflow
       uses: actions/checkout@v4
@@ -139,17 +143,15 @@ jobs:
          
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
 
-    - name: Optimasi Swap Space
+    - name: Optimasi Swap Space Tinggi (Anti IO Failure)
       run: |
-         if [ -f /bin/swapon ]; then
-             export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
-             sudo swapoff $SWAP_FILE || true
-             sudo rm $SWAP_FILE || true
-             sudo fallocate -l 16G $SWAP_FILE
-             sudo chmod 600 $SWAP_FILE
-             sudo mkswap $SWAP_FILE
-             sudo swapon $SWAP_FILE
-         fi
+         # FIXED: Relokasi & Pembuatan Swap 16GB murni dari ruang kosong SSD
+         sudo swapoff -a || true
+         sudo rm -f /mnt/swapfile || true
+         sudo fallocate -l 16G /mnt/swapfile
+         sudo chmod 600 /mnt/swapfile
+         sudo mkswap /mnt/swapfile
+         sudo swapon /mnt/swapfile
 
     - name: Download Toolchains (Hybrid Setup - STABLE)
       run: |
@@ -182,10 +184,12 @@ jobs:
              aria2c -q -o toolchain.tar.gz "$URL"
              tar -C $HOME/tmp-tc -zxf toolchain.tar.gz && rm toolchain.tar.gz
              mv $HOME/tmp-tc/*/* $HOME/tc/ 2>/dev/null || mv $HOME/tmp-tc/* $HOME/tc/
+             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
              
          elif [ "${{ inputs.compiler }}" = "zycromer-clang" ]; then
              aria2c -q -o zycromer.tar.gz "https://github.com/ZyCromerZ/Clang/releases/download/Clang-16.0.6-20260510-release/Clang-16.0.6-20260510-release.tar.gz"
              tar -C $HOME/tc -zxf zycromer.tar.gz && rm zycromer.tar.gz
+             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
 
          elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
              git clone --depth=1 https://github.com/WeeAris/SDClang.git $HOME/tc
@@ -212,6 +216,10 @@ jobs:
          # 3. Clean Versioning
          touch .scmversion
          export LOCALVERSION=""
+         
+         # Intervensi Tambahan: Menjinakkan Defconfig USB Gadget bawaan msm845
+         echo "CONFIG_USB_CONFIGFS_F_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         echo "CONFIG_USB_F_QDSS=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
          # 4. APatch & KernelSU Pre-requisites Fix
          echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
@@ -261,7 +269,7 @@ jobs:
          echo "Mematikan modul LKDTM untuk menghindari konflik llvm-objcopy..."
          echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
 
-    - name: Proses Kompilasi Pro (SMART IAS DETECTION)
+    - name: Proses Kompilasi Pro (SAFE MEMORY ALLOCATION)
       run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
@@ -279,7 +287,11 @@ jobs:
              USE_IAS=1
          fi
          
-         args="ARCH=arm64 O=../out \
+         mkdir -p ../out
+         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
+         
+         # FIXED: Menggunakan Inline-Command untuk memaksa flag penjinak -w murni masuk ke sub-folder compiler
+         make -j$(nproc --all) ARCH=arm64 O=../out \
               CC=clang \
               AR=llvm-ar \
               NM=llvm-nm \
@@ -290,14 +302,10 @@ jobs:
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
-              KBUILD_BUILD_USER=${{ inputs.project_name }} \
-              KBUILD_BUILD_HOST=project-labs \
-              KCFLAGS=-Wno-error \
-              HOSTCFLAGS=-Wno-error"
-
-         mkdir -p ../out
-         make $args ${{ inputs.kernel-config }}
-         make -j$(nproc --all) $args Image.gz dtbs 2>&1 | tee build.log
+              KBUILD_BUILD_USER="${{ inputs.project_name }}" \
+              KBUILD_BUILD_HOST="project-labs" \
+              KCFLAGS="-w -Wno-error" \
+              HOSTCFLAGS="-w -Wno-error" Image.gz dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "ERROR: Kompilasi Gagal!"
