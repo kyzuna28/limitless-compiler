@@ -21,12 +21,12 @@ on:
         type: string
       kernel_name:
         description: 'Nama Utama Kernel'
-        default: 'Kyzuna' # Pakai huruf biasa, jangan font aesthetic
+        default: 'Southwest' # Pakai huruf biasa, jangan font aesthetic
         required: true
         type: string
       rom_type:
         description: 'Tipe ROM / Tag Cabang'
-        default: 'Raven-Gki' # Pakai huruf biasa
+        default: 'Dynamic-Gki' # Pakai huruf biasa
         required: true
         type: string
       project_name:
