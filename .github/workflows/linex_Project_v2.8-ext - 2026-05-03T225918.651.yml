@@ -79,7 +79,7 @@ on:
         type: string
       kernel-config:
         description: 'Kernel Config / Defconfig'
-        default: 'sdm845_defconfig'
+        default: 'sdm845-perf_defconfig'
         required: true
         type: string
       kernelsu:
@@ -194,38 +194,51 @@ jobs:
              sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
          fi
          
-         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }} 么 ${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
+         # TARGET_CONFIG diubah ke sdm845-perf_defconfig agar pas dengan isi source LineageOS
+         TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
+         
+         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\" ${{ inputs.kernel_name }} 么 ${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
          
          touch .scmversion
          export LOCALVERSION=""
          
-         # AGGRESSIVE CLEAN-UP: Potong target QVR rusak & Interposer SDM670 yang bikin patah pipe
-         echo "Membersihkan target file VR (QVR) dan interposer yang rusak dari antrean build..."
+         # 1. AMPUTASI AUDIO ELLIPTIC LANGSUNG DARI SAKELAR INTERNAL TECHPACK AUDIO LINEAGEOS
+         echo "Mematikan driver Elliptic Ultrasound Techpack..."
+         sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' $TARGET_CONFIG || true
+         echo "CONFIG_AUDIO_ELLIPTIC=n" >> $TARGET_CONFIG
+         if [ -f techpack/audio/asoc/Makefile ]; then
+             sed -i '/elliptic/d' techpack/audio/asoc/Makefile || true
+         fi
+         
+         # 2. SUNTIK MATI EFI STUB SECARA BRUTAL AGAR LINKER VMLINUX LOLOS
+         echo "Menonaktifkan EFI dan EFI_STUB dari file defconfig..."
+         sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_EFI_STUB=y/CONFIG_EFI_STUB=n/g' $TARGET_CONFIG || true
+         echo "CONFIG_EFI=n" >> $TARGET_CONFIG
+         echo "CONFIG_EFI_STUB=n" >> $TARGET_CONFIG
+         if [ -f drivers/firmware/Makefile ]; then
+             sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
+         fi
+
+         # 3. CLEANSING RANJAU DTS QUALCOMM
+         echo "Membersihkan target file VR (QVR) dan interposer rusak..."
          sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/qvr-evt/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/qvr-dvt/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/sdm845-interposer/d' arch/arm64/boot/dts/qcom/Makefile || true
+
+         sed -i 's/CONFIG_USB_CONFIGFS_F_DIAG=y/CONFIG_USB_CONFIGFS_F_DIAG=n/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_USB_F_QDSS=y/CONFIG_USB_F_QDSS=n/g' $TARGET_CONFIG || true
          
-         # FIXED AUDIO TECHPACK: Matikan driver Elliptic Ultrasound yang bikin Undefined Reference
-         echo "Menjinakkan driver Elliptic Audio Techpack..."
-         echo "CONFIG_SND_SOC_ELLIPTIC=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_SND_SOC_ELLIPTIC_ULTRASOUND=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         
-         # FIXED EFI STUB LINKER ERROR
-         echo "CONFIG_EFI_STUB=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         
-         echo "CONFIG_USB_CONFIGFS_F_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_USB_F_QDSS=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         
-         echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         echo "CONFIG_KALLSYMS=y" >> $TARGET_CONFIG
+         echo "CONFIG_KALLSYMS_ALL=y" >> $TARGET_CONFIG
+         echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
+         echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
          
          if [ "${{ inputs.disable-lto }}" = "true" ]; then
-             sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
-             sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
-             echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+             sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' $TARGET_CONFIG || true
+             sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' $TARGET_CONFIG || true
+             echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
 
          echo "Mengonfigurasi Frekuensi GPU..."
@@ -234,7 +247,7 @@ jobs:
          TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
          if [ -f "$TARGET_DTSI" ]; then
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
-             sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MIN_HZ>;/g" $TARGET_DTSI || true
+             sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/g" $TARGET_DTSI || true
          else
              find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
          fi
@@ -255,7 +268,8 @@ jobs:
              fi
          fi
 
-         echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
+         echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
 
     - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
@@ -293,6 +307,7 @@ jobs:
               KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
+         # FIXED: Menambahkan penutup 'fi' agar skrip tidak patah di tengah jalan
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "ERROR: Kompilasi Gagal!"
              tail -n 300 build.log
