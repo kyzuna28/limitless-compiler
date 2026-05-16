@@ -6,7 +6,7 @@ on:
     inputs:
       ubuntu:
         description: 'Run on'
-        default: 'ubuntu-24.04'
+        default: 'ubuntu-22.04'
         required: true
         type: string
       zip_name:
