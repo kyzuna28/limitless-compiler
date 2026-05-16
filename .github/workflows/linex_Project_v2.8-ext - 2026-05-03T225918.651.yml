@@ -1,5 +1,5 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.7 Pro Full Ultimate - Fix Eva Clang Mirror & GPU Clock Engine
+# Version 3.7 Pro Full Ultimate - Fix Clang Mirrors & GPU Clock Engine
 name: Poco F1 Kernel Compiler 2.8
 on:
   workflow_dispatch:
@@ -35,8 +35,8 @@ on:
         required: true
         type: string
       compiler:
-        description: 'Ketik Compiler (Opsi: aosp-clang / proton-clang / eva-clang / zyc-clang / sdclang)'
-        default: 'eva-clang'
+        description: 'Ketik Compiler (Opsi: aosp-clang / proton-clang / weebx-clang / zycromer-clang / sdclang)'
+        default: 'weebx-clang'
         required: true
         type: string
       aosp-clang-ver:
@@ -140,19 +140,19 @@ jobs:
              tar -C $HOME/tc -zxf tc.tar.gz && rm tc.tar.gz
          
          elif [ "${{ inputs.compiler }}" = "proton-clang" ]; then
-             echo "Cloning Proton Clang..."
-             git clone --depth=1 https://github.com/kdrag0n/proton-clang.git $HOME/tc
+             echo "Downloading Proton Clang Master Tarball..."
+             aria2c -q -o proton.tar.gz "https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
+             tar -C $HOME/tc --strip-components=1 -zxf proton.tar.gz && rm proton.tar.gz
              
-         elif [ "${{ inputs.compiler }}" = "eva-clang" ]; then
-             echo "Downloading Official Eva Clang from Active Public Mirror..."
-             # Mengunduh paket tarball Eva Clang langsung agar bebas dari error login git clone
-             aria2c -q -o eva.tar.gz "https://gitlab.com/CannedKitten/vortex_clang/-/archive/master/vortex_clang-master.tar.gz"
-             tar -C $HOME/tc --strip-components=1 -zxf eva.tar.gz && rm eva.tar.gz
+         elif [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
+             echo "Downloading Official WeebX (Yuki) Clang Tarball..."
+             aria2c -q -o weebx.tar.gz "https://github.com/Klozz/Yuki-clang/archive/refs/heads/master.tar.gz"
+             tar -C $HOME/tc --strip-components=1 -zxf weebx.tar.gz && rm weebx.tar.gz
 
-         elif [ "${{ inputs.compiler }}" = "zyc-clang" ]; then
-             echo "Downloading ZycClang..."
-             aria2c -q -o zyc.tar.gz "https://raw.githubusercontent.com/zyandatanzil/Clang-Write/main/zyc-clang/zyc-clang-r485501b.tar.gz" || aria2c -q -o zyc.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r15/clang-r487747c.tar.gz"
-             tar -C $HOME/tc -zxf zyc.tar.gz && rm zyc.tar.gz
+         elif [ "${{ inputs.compiler }}" = "zycromer-clang" ]; then
+             echo "Downloading Verified ZyCromerZ Clang Stable Build..."
+             aria2c -q -o zycromer.tar.gz "https://github.com/ZyCromerZ/Clang/releases/download/Clang-16.0.6-20260510-release/Clang-16.0.6-20260510-release.tar.gz"
+             tar -C $HOME/tc --strip-components=1 -zxf zycromer.tar.gz && rm zycromer.tar.gz
 
          elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
              echo "Cloning Snapdragon LLVM Compiler (SDClang)..."
