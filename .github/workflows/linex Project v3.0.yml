@@ -21,12 +21,12 @@ on:
         type: string
       kernel_name:
         description: 'Nama Utama Kernel'
-        default: 'Kyzuna' # Pakai huruf biasa, jangan font aesthetic
+        default: 'Kyzuna'
         required: true
         type: string
       rom_type:
         description: 'Tipe ROM / Tag Cabang'
-        default: 'Raven-Gki' # Pakai huruf biasa
+        default: 'Raven-Gki'
         required: true
         type: string
       project_name:
@@ -246,14 +246,20 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-         # 8. Fix VDSO Assembler Crash
-         echo "Menjinakkan Makefile VDSO agar patuh pada GCC Assembler..."
+         # 8. Fix VDSO Assembler Crash (Aman untuk LLVM_IAS=0 maupun LLVM_IAS=1)
+         echo "Menjinakkan Makefile VDSO..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
-             sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
-             sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
-             sed -i '/cc1as/d' $VDSO_MAKEFILE || true
+             if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ] || [ "${{ inputs.compiler }}" = "sdclang" ]; then
+                 sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
+                 sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
+                 sed -i '/cc1as/d' $VDSO_MAKEFILE || true
+             fi
          fi
+
+         # 9. Fix LLVM Objcopy LKDTM Conflict (Anti Mogok Folder drivers/misc)
+         echo "Mematikan modul LKDTM untuk menghindari konflik llvm-objcopy..."
+         echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
 
     - name: Proses Kompilasi Pro (SMART IAS DETECTION)
       run: |
@@ -307,20 +313,20 @@ jobs:
           
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           
-          # Salin file output utama dengan perbaikan teliti pada jalur pencarian direktori DTB
-          if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
-              cp ../out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [ -f ../out/arch/arm64/boot/Image.gz ] && [ -f ../out/arch/arm64/boot/dts/qcom/sdm845-v2.dtb ]; then
-              cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/qcom/sdm845-v2.dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz-dtb
-          elif [ -f ../out/arch/arm64/boot/Image.gz ] && [ -f ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb ]; then
-              cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz-dtb
-          elif [ -f ../out/arch/arm64/boot/Image.gz ]; then
-              cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+          # Prioritaskan pencarian biner dari folder out secara tepat akurat
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+              cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
+          elif [ -f out/arch/arm64/boot/Image.gz ] && [ -f out/arch/arm64/boot/dts/qcom/sdm845-v2.dtb ]; then
+              cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dts/qcom/sdm845-v2.dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz-dtb
+          elif [ -f out/arch/arm64/boot/Image.gz ] && [ -f out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb ]; then
+              cat out/arch/arm64/boot/Image.gz out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz-dtb
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+              cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
           else
-              cp ../out/arch/arm64/boot/Image AnyKernel3/Image
+              cp out/arch/arm64/boot/Image AnyKernel3/Image
           fi
           
-          [ -f ../out/arch/arm64/boot/dtbo.img ] && cp ../out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
+          [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
           
           cd AnyKernel3
           zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" * -x .git README.md
