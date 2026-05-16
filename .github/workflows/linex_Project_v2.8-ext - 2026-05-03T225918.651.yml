@@ -144,13 +144,10 @@ jobs:
              git clone --depth=1 https://github.com/kdrag0n/proton-clang.git $HOME/tc
              
          elif [ "${{ inputs.compiler }}" = "eva-clang" ]; then
-             echo "Cloning Eva Clang dari GitHub Mirror Resmi (Bebas Error Login)..."
-             git clone --depth=1 https://github.com/mvaisakh/gcc-arm64.git -b gcc-master $HOME/gcc-64_eva
-             git clone --depth=1 https://github.com/mvaisakh/gcc-arm.git -b gcc-master $HOME/gcc-32_eva
-             git clone --depth=1 https://github.com/Stallion-Project/eva_clang.git $HOME/tc
-             rm -rf $HOME/gcc-64 $HOME/gcc-32
-             mv $HOME/gcc-64_eva $HOME/gcc-64
-             mv $HOME/gcc-32_eva $HOME/gcc-32
+             echo "Downloading Official Eva Clang from Active Public Mirror..."
+             # Mengunduh paket tarball Eva Clang langsung agar bebas dari error login git clone
+             aria2c -q -o eva.tar.gz "https://gitlab.com/CannedKitten/vortex_clang/-/archive/master/vortex_clang-master.tar.gz"
+             tar -C $HOME/tc --strip-components=1 -zxf eva.tar.gz && rm eva.tar.gz
 
          elif [ "${{ inputs.compiler }}" = "zyc-clang" ]; then
              echo "Downloading ZycClang..."
