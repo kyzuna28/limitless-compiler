@@ -94,7 +94,7 @@ jobs:
          echo "Building Poco F1 Kernel Version 2.8 Pro Ultimate Final Fix"
          sudo timedatectl set-timezone Asia/Jakarta
          
-         # FIXED: Melegakan space & RAM dari bloatware bawaan Github agar tidak memicu sub-make error 2 / broken pipe
+         # Bersihkan bloatware maksimal untuk melegakan RAM & Disk
          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
          sudo docker image prune --all --force
 
@@ -117,7 +117,6 @@ jobs:
 
     - name: Optimasi Swap Space Tinggi (Anti IO Failure)
       run: |
-         # FIXED: Membuat Swap 16GB murni dari ruang kosong SSD
          sudo swapoff -a || true
          sudo rm -f /mnt/swapfile || true
          sudo fallocate -l 16G /mnt/swapfile
@@ -231,7 +230,6 @@ jobs:
                  sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
                  sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
                  sed -i '/cc1as/d' $VDSO_MAKEFILE || true
-                 echo "VDSO dikondisikan aman untuk External GCC-As."
              fi
          fi
 
@@ -239,7 +237,7 @@ jobs:
          echo "Mematikan modul LKDTM untuk menghindari konflik llvm-objcopy..."
          echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
 
-    - name: Proses Kompilasi Pro (SAFE MEMORY ALLOCATION)
+    - name: Proses Kompilasi Pro (SAFE LINKER TUNING)
       run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
@@ -262,9 +260,10 @@ jobs:
          mkdir -p ../out
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
-         # FIXED: Memasukkan flag penjinak error global -w & membatasi beban alokasi sub-make
+         # OPTIMASI: Secara eksplisit memaksa LD memakai ld.lld bawaan LLVM + optimasi memori linker tingkat tinggi (-Wl,--no-keep-memory)
          make -j$(nproc --all) ARCH=arm64 O=../out \
               CC=clang \
+              LD=ld.lld \
               AR=llvm-ar \
               NM=llvm-nm \
               OBJCOPY=llvm-objcopy \
@@ -274,7 +273,7 @@ jobs:
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
-              KCFLAGS="-w -Wno-error" \
+              KCFLAGS="-w -Wno-error -Wl,--no-keep-memory" \
               HOSTCFLAGS="-w -Wno-error" Image.gz dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
