@@ -1,6 +1,6 @@
 # linex Project - Customized for Poco F1 (beryllium)
 # Version 3.0 Pro Full Final - Ultimate Stability & Features
-name: Poco F1 Kernel Compiler Silvercore
+name: Poco F1 Kernel Silvercore Compiler 3.0
 on:
   workflow_dispatch:
     inputs:
@@ -141,13 +141,14 @@ jobs:
 
     - name: Download Toolchains (Hybrid Setup)
       run: |
+         rm -rf $HOME/tc $HOME/gcc-64 $HOME/gcc-32
          mkdir -p $HOME/tc $HOME/gcc-64 $HOME/gcc-32
          
          # GCC 4.9 Wajib untuk stabilitas kernel 4.9 lama (beryllium sdm845)
-         aria2c -q -o gcc-64.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz
-         tar -C $HOME/gcc-64 -zxf gcc-64.tar.gz
-         aria2c -q -o gcc-32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz
-         tar -C $HOME/gcc-32 -zxf gcc-32.tar.gz
+         aria2c -q -o gcc-64.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz"
+         tar -C $HOME/gcc-64 -zxf gcc-64.tar.gz && rm gcc-64.tar.gz
+         aria2c -q -o gcc-32.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz"
+         tar -C $HOME/gcc-32 -zxf gcc-32.tar.gz && rm gcc-32.tar.gz
          
          # Logic Pemilihan Compiler dan Versi Clang 8 s/d 15+
          if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
@@ -163,17 +164,15 @@ jobs:
                  *) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz" ;;
              esac
              aria2c -q -o tc.tar.gz "$URL"
-             tar -C $HOME/tc -zxf tc.tar.gz
+             tar -C $HOME/tc -zxf tc.tar.gz && rm tc.tar.gz
          
          elif [ "${{ inputs.compiler }}" = "proton-clang" ]; then
-             # Menggunakan git clone karena Proton Clang memiliki modul git-lfs (biner rusak jika pakai tar.gz)
              echo "Cloning Proton Clang..."
              git clone --depth=1 https://github.com/kdrag0n/proton-clang.git $HOME/tc
          
          elif [ "${{ inputs.compiler }}" = "azure-clang" ]; then
              echo "Downloading Azure Clang..."
-             aria2c -q -o azure.tar.gz "https://gitlab.com/Panchajanya1999/azure-clang/-/archive/master/azure-clang-master.tar.gz"
-             tar -C $HOME/tc --strip-components=1 -zxf azure.tar.gz
+             git clone --depth=1 https://gitlab.com/Panchajanya1999/azure-clang.git $HOME/tc
          fi
 
     - name: Clone Kernel Source
