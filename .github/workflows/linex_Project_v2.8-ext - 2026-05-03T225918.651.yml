@@ -1,5 +1,5 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 2.8 Ultimate Stable - Perfect Syntax, VDSO Fix & Me Symbol Branding
+# Version 2.8 Ultimate Final Fix - Adaptive Engine & Secure Packaging
 name: Poco F1 Kernel Compiler 2.8
 on:
   workflow_dispatch:
@@ -21,12 +21,12 @@ on:
         type: string
       kernel_name:
         description: 'Nama Utama Kernel'
-        default: 'Southwest' # Pakai huruf biasa, jangan font aesthetic
+        default: 'Southwest'
         required: true
         type: string
       rom_type:
         description: 'Tipe ROM / Tag Cabang'
-        default: 'Dynamic-Gki' # Pakai huruf biasa
+        default: 'Dynamic-Gki'
         required: true
         type: string
       project_name:
@@ -91,7 +91,7 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build
       run: |
-         echo "Building Poco F1 Kernel Version 2.8 Pro Ultimate"
+         echo "Building Poco F1 Kernel Version 2.8 Pro Ultimate Final Fix"
          sudo timedatectl set-timezone Asia/Jakarta
 
     - name: Checkout Workflow
@@ -221,24 +221,23 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-         # 8. Fix VDSO Assembler Crash
-         echo "Menjinakkan Makefile VDSO agar patuh pada GCC Assembler..."
+         # 8. Fix VDSO Assembler Crash (ADAPTIVE AUTOMATION ENGINE)
+         echo "Menjinakkan Makefile VDSO secara adaptif..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
-             sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
-             sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
-             sed -i '/cc1as/d' $VDSO_MAKEFILE || true
+             if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ] || [ "${{ inputs.compiler }}" = "sdclang" ]; then
+                 sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
+                 sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
+                 sed -i '/cc1as/d' $VDSO_MAKEFILE || true
+                 echo "VDSO dikondisikan aman untuk External GCC-As."
+             fi
          fi
 
-         # 9. Fix LLVM Objcopy LKDTM Conflict (TAMBAHKAN INI)
+         # 9. Fix LLVM Objcopy LKDTM Conflict (Anti Mogok Semua Jenis Clang)
          echo "Mematikan modul LKDTM untuk menghindari konflik llvm-objcopy..."
          echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
 
-         # 9. Fix LLVM Objcopy LKDTM Conflict (TAMBAHKAN INI)
-         echo "Mematikan modul LKDTM untuk menghindari konflik llvm-objcopy..."
-         echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
-
-    - name: Proses Kompilasi Pro
+    - name: Proses Kompilasi Pro (SMART IAS DETECTION)
       run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
@@ -246,13 +245,19 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
-         if [ "${{ inputs.compiler }}" = "aosp-clang" ] || [ "${{ inputs.compiler }}" = "sdclang" ]; then
+         # Penentu Otomatis status LLVM_IAS (Integrated Assembler)
+         if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
+             if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
+                 USE_IAS=0
+             else
+                 USE_IAS=1
+             fi
+         elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
              USE_IAS=0
          else
              USE_IAS=1
          fi
          
-         # Memperbaiki argumen tanpa LLVM=1 agar tidak merusak kompabilitas Makefile msm-4.9
          args="ARCH=arm64 O=../out \
               CC=clang \
               AR=llvm-ar \
@@ -276,7 +281,7 @@ jobs:
              exit 1
          fi
 
-    - name: Smart Packaging (FIXED PATH OUTPUT)
+    - name: Smart Packaging (SAFE EXTRACTION - FIXED PATH)
       run: |
           rm -f *.zip
           git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
@@ -284,8 +289,19 @@ jobs:
           
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           
-          cp ../out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb || cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp ../out/arch/arm64/boot/Image AnyKernel3/Image
-          [ -f ../out/arch/arm64/boot/dtbo.img ] && cp ../out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
+          # Jalur ekstraksi diarahkan tepat ke folder out/ asli
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+              cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+              cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+          elif [ -f out/arch/arm64/boot/Image ]; then
+              cp out/arch/arm64/boot/Image AnyKernel3/Image
+          else
+              echo "ERROR: Berkas biner kernel tidak ditemukan di folder out!"
+              exit 1
+          fi
+          
+          [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
           
           cd AnyKernel3
           zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" * -x .git README.md
