@@ -237,7 +237,7 @@ jobs:
          echo "Mematikan modul LKDTM untuk menghindari konflik llvm-objcopy..."
          echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
 
-    - name: Proses Kompilasi Pro (SAFE LINKER TUNING)
+    - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
@@ -260,10 +260,19 @@ jobs:
          mkdir -p ../out
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
-         # OPTIMASI: Secara eksplisit memaksa LD memakai ld.lld bawaan LLVM + optimasi memori linker tingkat tinggi (-Wl,--no-keep-memory)
-         make -j$(nproc --all) ARCH=arm64 O=../out \
+         # Hitung & batasi alokasi core CPU biar adil dengan pembagian RAM
+         TOTAL_CORES=$(nproc --all)
+         if [ $TOTAL_CORES -gt 1 ]; then
+             SAFE_CORES=$((TOTAL_CORES - 1))
+         else
+             SAFE_CORES=1
+         fi
+         echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan RAM VM..."
+         
+         # PERBAIKAN: Menghapus "LD=ld.lld" global untuk memperbaiki eror "target emulation unknown"
+         # Tapi tetap mengunci flag pembatas RAM (-Wl,--no-keep-memory) di KCFLAGS
+         make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
-              LD=ld.lld \
               AR=llvm-ar \
               NM=llvm-nm \
               OBJCOPY=llvm-objcopy \
@@ -273,7 +282,7 @@ jobs:
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
-              KCFLAGS="-w -Wno-error -Wl,--no-keep-memory" \
+              KCFLAGS="-w -Wno-error -Wl,--no-keep-memory -Wl,--reduce-memory-overheads" \
               HOSTCFLAGS="-w -Wno-error" Image.gz dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
@@ -281,7 +290,7 @@ jobs:
              tail -n 200 build.log
              exit 1
          fi
-
+         
     - name: Smart Packaging (SAFE EXTRACTION - FIXED PATH)
       run: |
           rm -f *.zip
