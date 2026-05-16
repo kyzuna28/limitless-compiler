@@ -350,29 +350,25 @@ jobs:
          SELECTED_COMPILER="${{ inputs.compiler }}"
          echo "Compiler yang dipilih di UI: $SELECTED_COMPILER"
          
-         if [ "$SELECTED_COMPILER" = "weebx-clang" ] || [ "$SELECTED_COMPILER" = "proton-clang" ]; then
+         # Zycromer-clang dimasukkan ke LLVM_IAS=1 karena berbasis LLVM modern untuk menghindari bug vDSO
+         if [ "$SELECTED_COMPILER" = "weebx-clang" ] || [ "$SELECTED_COMPILER" = "proton-clang" ] || [ "$SELECTED_COMPILER" = "zycromer-clang" ] || [ "$SELECTED_COMPILER" = "zycromer" ]; then
              echo "Memicu Integrated Assembler (LLVM_IAS=1) untuk compiler modern..."
              USE_IAS=1
-         elif [ "$SELECTED_COMPILER" = "sdclang" ] || [ "$SELECTED_COMPILER" = "zycromer-clang" ] || [ "$SELECTED_COMPILER" = "zycromer" ]; then
-             echo "MEMAKSA GCC EXTERNAL ASSEMBLER (LLVM_IAS=0) UNTUK BYPASS VDSO JUNK LINES..."
+         elif [ "$SELECTED_COMPILER" = "sdclang" ]; then
+             echo "Memicu GCC External Assembler (LLVM_IAS=0) untuk SDClang..."
              USE_IAS=0
              
-             # INTERVENSI TOTAL GLOBAL PADA MAKEFILE VDSO
+             # Intervensi VDSO hanya jika benar-benar menggunakan compiler lama/SDClang yang butuh bypass
              VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
              if [ -f "$VDSO_MAKEFILE" ]; then
-                 echo "=== SAPU BERSIH RANJAU DI SELURUH BARIS VDSO MAKEFILE ==="
-                 # Amputasi paksa kata -cc1as dan integrated-as di semua baris secara global
+                 echo "=== OPTIMASI VDSO MAKEFILE UNTUK EXTERNAL ASSEMBLER ==="
+                 # Bersihkan flag bawaan yang konflik
                  sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
                  sed -i 's/-no-integrated-as//g' $VDSO_MAKEFILE || true
                  sed -i 's/-integrated-as//g' $VDSO_MAKEFILE || true
-                 sed -i '/cc1as/d' $VDSO_MAKEFILE || true
-                 
-                 # Suntik paksa flag eksternal assembler ke dalam makro kompilator VDSO
-                 sed -i 's/$(CC) $(ccflags-y)/$(CC) -no-integrated-as $(ccflags-y)/g' $VDSO_MAKEFILE || true
-                 sed -i 's/$(CC) $(c_flags)/$(CC) -no-integrated-as $(c_flags)/g' $VDSO_MAKEFILE || true
              fi
          else
-             echo "Memicu GCC External Assembler (LLVM_IAS=0) untuk mencegah Broken Pipe..."
+             echo "Memicu GCC External Assembler (LLVM_IAS=0) sebagai fallback..."
              USE_IAS=0
          fi
          
