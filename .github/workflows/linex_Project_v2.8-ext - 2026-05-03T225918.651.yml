@@ -1,6 +1,6 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.5 Pro Full Final - Freedom of Text Inputs & Ultimate Stability
-name: Poco F1 Kernel Compiler 2.8 manual
+# Version 3.7 Pro Full Ultimate - Fix Eva Clang Mirror & GPU Clock Engine
+name: Poco F1 Kernel Compiler 2.8
 on:
   workflow_dispatch:
     inputs:
@@ -25,7 +25,7 @@ on:
         required: true
         type: string
       rom_type:
-        description: 'Tipe ROM/Tag (Bisa diketik manual: nse / se / dynamic / miui)'
+        description: 'Tipe ROM/Tag (nse / se / dynamic / miui)'
         default: 'nse'
         required: true
         type: string
@@ -36,31 +36,41 @@ on:
         type: string
       compiler:
         description: 'Ketik Compiler (Opsi: aosp-clang / proton-clang / eva-clang / zyc-clang / sdclang)'
-        default: 'proton-clang'
+        default: 'eva-clang'
         required: true
         type: string
       aosp-clang-ver:
-        description: 'Versi Clang (Hanya jika pakai aosp-clang. Ketik: 11 / 12 / 13 / 14 / 15 / latest)'
+        description: 'Versi Clang (Hanya jika pakai aosp-clang: 11 / 12 / 13 / 14 / 15 / latest)'
         default: '11'
         required: true
         type: string
+      gpu_min_clock:
+        description: 'Frekuensi MINIMAL GPU (dalam MHz, Contoh: 180 atau 257)'
+        default: '180'
+        required: true
+        type: string
+      gpu_max_clock:
+        description: 'Frekuensi MAKSIMAL GPU / OC (dalam MHz, Contoh: 710, 800, 825)'
+        default: '800'
+        required: true
+        type: string
       kernel-url:
-        description: 'Kernel Source URL (Bisa dihapus & diganti bebas)'
+        description: 'Kernel Source URL (Bisa diganti bebas)'
         default: 'https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git'
         required: true
         type: string
       kernel-branch:
-        description: 'Kernel Branch (Bisa diketik manual)'
+        description: 'Kernel Branch'
         default: 'lineage-20'
         required: true
         type: string
       kernel-config:
-        description: 'Kernel Config / Defconfig (Bisa diketik manual)'
+        description: 'Kernel Config / Defconfig'
         default: 'sdm845_defconfig'
         required: true
         type: string
       kernelsu:
-        description: 'KernelSU (Bisa diketik manual: ksu / next / false)'
+        description: 'KernelSU (ksu / next / false)'
         default: 'ksu'
         required: true
         type: string
@@ -81,7 +91,7 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build
       run: |
-         echo "Building Poco F1 Kernel Version 3.5 Pro"
+         echo "Building Poco F1 Kernel Version 3.7 Pro Ultimate"
          sudo timedatectl set-timezone Asia/Jakarta
 
     - name: Checkout Workflow
@@ -134,10 +144,10 @@ jobs:
              git clone --depth=1 https://github.com/kdrag0n/proton-clang.git $HOME/tc
              
          elif [ "${{ inputs.compiler }}" = "eva-clang" ]; then
-             echo "Cloning Eva Clang..."
+             echo "Cloning Eva Clang dari GitHub Mirror Resmi (Bebas Error Login)..."
              git clone --depth=1 https://github.com/mvaisakh/gcc-arm64.git -b gcc-master $HOME/gcc-64_eva
              git clone --depth=1 https://github.com/mvaisakh/gcc-arm.git -b gcc-master $HOME/gcc-32_eva
-             git clone --depth=1 https://gitlab.com/mvaisakh/clang-build.git $HOME/tc
+             git clone --depth=1 https://github.com/Stallion-Project/eva_clang.git $HOME/tc
              rm -rf $HOME/gcc-64 $HOME/gcc-32
              mv $HOME/gcc-64_eva $HOME/gcc-64
              mv $HOME/gcc-32_eva $HOME/gcc-32
@@ -186,8 +196,22 @@ jobs:
              sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
              echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          fi
+
+         # 6. Smart GPU Clock Engine (Inject Overclock & Downclock)
+         echo "Menyelaraskan Frekuensi Custom GPU..."
+         MIN_HZ=$((${{ inputs.gpu_min_clock }} * 1000000))
+         MAX_HZ=$((${{ inputs.gpu_max_clock }} * 1000000))
+         TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
+         if [ -f "$TARGET_DTSI" ]; then
+             sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
+             sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MIN_HZ>;/g" $TARGET_DTSI || true
+             echo "Berhasil mengubah DTSI tabel GPU ke: ${{ inputs.gpu_min_clock }}Mhz - ${{ inputs.gpu_max_clock }}Mhz"
+         else
+             echo "DTSI utama tidak ketemu, injeksi frekuensi global diaktifkan..."
+             find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
+         fi
          
-         # 6. KernelSU / KernelSU-Next
+         # 7. KernelSU / KernelSU-Next
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
@@ -203,7 +227,6 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
-         # Parameter argument kedap error untuk sistem operasi Ubuntu modern
          args="ARCH=arm64 O=../out \
               CC=clang \
               HOSTCC=gcc \
@@ -255,5 +278,5 @@ jobs:
     - name: Upload Final Build
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-3.5"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-3.7"
         path: "*.zip"
