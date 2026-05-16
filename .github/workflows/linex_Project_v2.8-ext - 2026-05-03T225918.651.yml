@@ -228,7 +228,7 @@ jobs:
               CC=clang \
               HOSTCC=gcc \
               HOSTCXX=g++ \
-              HOSTLD=ld \
+              HOSTLD=/usr/bin/ld \
               AR=llvm-ar \
               NM=llvm-nm \
               OBJCOPY=llvm-objcopy \
