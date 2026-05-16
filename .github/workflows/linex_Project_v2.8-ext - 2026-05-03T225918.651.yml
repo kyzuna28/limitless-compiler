@@ -15,7 +15,7 @@ on:
         required: true
         type: string
       kernel_version:
-        description: 'Isi angka (misal 4.19.1) or biarkan "original" untuk versi asli'
+        description: 'Isi angka (misal 4.19.1) atau biarkan "original" untuk versi asli'
         default: 'original'
         required: true
         type: string
@@ -35,15 +35,28 @@ on:
         required: true
         type: string
       compiler:
-        description: 'Ketik Compiler (Opsi: aosp-clang / proton-clang / weebx-clang / zycromer-clang / sdclang)'
+        description: 'Pilih Compiler Pro'
         default: 'proton-clang'
         required: true
-        type: string
+        type: choice
+        options:
+        - aosp-clang
+        - proton-clang
+        - weebx-clang
+        - zycromer-clang
+        - sdclang
       aosp-clang-ver:
-        description: 'Versi Clang (Hanya jika pakai aosp-clang: 11 / 12 / 13 / 14 / 15 / latest)'
+        description: 'Versi Clang (Hanya jika pakai aosp-clang)'
         default: '11'
         required: true
-        type: string
+        type: choice
+        options:
+        - '11'
+        - '12'
+        - '13'
+        - '14'
+        - '15'
+        - 'latest'
       gpu_min_clock:
         description: 'Frekuensi MINIMAL GPU (dalam MHz, Contoh: 180 atau 257)'
         default: '180'
@@ -73,7 +86,11 @@ on:
         description: 'KernelSU (ksu / next / false)'
         default: 'ksu'
         required: true
-        type: string
+        type: choice
+        options:
+        - ksu
+        - next
+        - "false"
       disable-lto:
         description: 'Disable LTO (true / false)'
         default: 'true'
@@ -260,6 +277,7 @@ jobs:
              SAFE_CORES=1
          fi
          
+         # FIXED: Menambahkan target Image.gz-dtb ke baris perintah kompilasi
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
               AR=llvm-ar \
@@ -272,7 +290,7 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               KCFLAGS="-w -Wno-error -Wl,--no-keep-memory -Wl,--reduce-memory-overheads" \
-              HOSTCFLAGS="-w -Wno-error" Image.gz dtbs 2>&1 | tee build.log
+              HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "ERROR: Kompilasi Gagal!"
@@ -288,15 +306,17 @@ jobs:
           
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           
+          # FIXED: Ditambahkan jalur penjahitan DTB manual ke biner Image.gz jika file gabungan utama absen
           if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
               cp ../out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
+          elif [ -f ../out/arch/arm64/boot/Image.gz ] && [ -f ../out/arch/arm64/boot/dts/sdm845-beryllium.dtb ]; then
+              cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
+          elif [ -f ../out/arch/arm64/boot/Image.gz ] && [ -f ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb ]; then
+              cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
           elif [ -f ../out/arch/arm64/boot/Image.gz ]; then
               cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
-          elif [ -f ../out/arch/arm64/boot/Image ]; then
-              cp ../out/arch/arm64/boot/Image AnyKernel3/Image
           else
-              echo "ERROR: Berkas biner kernel tidak ditemukan di folder out!"
-              exit 1
+              cp ../out/arch/arm64/boot/Image AnyKernel3/Image
           fi
           
           [ -f ../out/arch/arm64/boot/dtbo.img ] && cp ../out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
