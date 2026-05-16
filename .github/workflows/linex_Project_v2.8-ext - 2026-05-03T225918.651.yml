@@ -46,11 +46,10 @@ on:
         - weebx-clang
       aosp-clang-ver:
         description: 'Versi Clang (Hanya jika pakai aosp-clang)'
-        default: '11'
+        default: '12'
         required: true
         type: choice
         options:
-        - '11'
         - '12'
         - '13'
         - '14'
@@ -155,7 +154,6 @@ jobs:
          if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
              echo "Fetching Official Google AOSP Clang..."
              case "${{ inputs.aosp-clang-ver }}" in
-                 11) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz" ;;
                  12) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-12.1.0_r27/clang-r416183b1.tar.gz" ;;
                  13) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-13.0.0_r30/clang-r450784d.tar.gz" ;;
                  14) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r15/clang-r487747c.tar.gz" ;;
@@ -242,6 +240,14 @@ jobs:
          SELECTED_LTO="${{ inputs.lto_type }}"
          echo "Mode LTO yang dipilih di UI: $SELECTED_LTO"
          
+         # 6. UNIVERSAL ANDROID COMPATIBILITY PATCH (ANDROID 10 - 13+)
+         echo "Menyuntikkan flag kompatibilitas lintas Android (10-13+)..."
+         echo "CONFIG_ANDROID_BINDERFS=y" >> $TARGET_CONFIG
+         echo "CONFIG_CGROUPS=y" >> $TARGET_CONFIG
+         echo "CONFIG_CGROUP_BPF=y" >> $TARGET_CONFIG
+         echo "CONFIG_MEMCG=y" >> $TARGET_CONFIG
+         echo "CONFIG_MEMCG_SWAP=y" >> $TARGET_CONFIG
+         
          # Bersihkan dulu sisa config LTO bawaan agar tidak bentrok
          sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' $TARGET_CONFIG || true
@@ -278,16 +284,20 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-         # === RAMUAN TAMBAHAN: JINAKKAN MAKEFILE VDSO UNTUK CLANG 11/12/13 ===
+         # ================= INJEKSI FIX BROKEN PIPE UNTUK CLANG 12-13 =================
+         echo "Menyuntikkan perbaikan macro string asm vgettimeofday..."
+         find . -name "vgettimeofday.c" -exec sed -i 's/explicit "cc"/:"cc"/g' {} + || true
+
          echo "Menjinakkan berkas Makefile VDSO dari opsi no-integrated-as..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
-             if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
+             if [ "${{ inputs.compiler }}" = "aosp-clang" ] && { [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; }; then
                  sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
                  sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
                  sed -i '/cc1as/d' $VDSO_MAKEFILE || true
              fi
          fi
+         # ==============================================================================
 
          sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
          echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
@@ -299,9 +309,20 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
-         # Karena semua compiler stabil yang tersisa modern, mutlak gunakan Integrated Assembler
-         USE_IAS=1
-         echo "Menggunakan Integrated Assembler (LLVM_IAS=1) demi kestabilan penuh."
+         # DETEKSI OTOMATIS IAS BERDASARKAN COMPILER DEMI KEAMANAN STRUKTUR ASSEMBLY
+         if [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
+             echo "Menggunakan Integrated Assembler (LLVM_IAS=1) untuk compiler modern."
+             USE_IAS=1
+         else
+             # Menjaga kestabilan kompilasi AOSP Clang 12/13 menggunakan assembler eksternal yang aman
+             if [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
+                 echo "Mengaktifkan mode penyesuaian khusus (LLVM_IAS=0) demi stabilitas Clang Lama."
+                 USE_IAS=0
+             else
+                 echo "Menggunakan LLVM_IAS=1 untuk AOSP Clang modern."
+                 USE_IAS=1
+             fi
+         fi
          
          rm -rf ../out && mkdir -p ../out
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
@@ -325,6 +346,7 @@ jobs:
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
+              GCC_TOOLCHAIN=$HOME/gcc-64 \
               KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
@@ -393,4 +415,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-2.8"
-        path: "*.zip"
+        path: "${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip"
