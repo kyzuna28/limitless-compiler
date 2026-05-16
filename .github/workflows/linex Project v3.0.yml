@@ -1,5 +1,5 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.0 Ultimate Stable - Perfect Dropdown, VDSO Fix & Me Symbol Branding
+# Version 3.0 Ultimate Final Fix - Perfect Dropdown & Smart Adaptive Engine
 name: Poco F1 Kernel Compiler 3.0
 on:
   workflow_dispatch:
@@ -119,7 +119,7 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build
       run: |
-         echo "Building Poco F1 Kernel Version 3.0 Pro Ultimate"
+         echo "Building Poco F1 Kernel Version 3.0 Pro Ultimate Final Fix"
          sudo timedatectl set-timezone Asia/Jakarta
 
     - name: Checkout Workflow
@@ -246,7 +246,7 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-         # 8. Fix VDSO Assembler Crash (Aman untuk LLVM_IAS=0 maupun LLVM_IAS=1)
+         # 8. Fix VDSO Assembler Crash (Adaptive Automation Engine)
          echo "Menjinakkan Makefile VDSO..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
@@ -257,7 +257,7 @@ jobs:
              fi
          fi
 
-         # 9. Fix LLVM Objcopy LKDTM Conflict (Anti Mogok Folder drivers/misc)
+         # 9. Fix LLVM Objcopy LKDTM Conflict (Universal Anti Mogok)
          echo "Mematikan modul LKDTM untuk menghindari konflik llvm-objcopy..."
          echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
 
@@ -313,7 +313,7 @@ jobs:
           
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           
-          # Prioritaskan pencarian biner dari folder out secara tepat akurat
+          # Pencarian biner dari folder out secara presisi
           if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
               cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
           elif [ -f out/arch/arm64/boot/Image.gz ] && [ -f out/arch/arm64/boot/dts/qcom/sdm845-v2.dtb ]; then
