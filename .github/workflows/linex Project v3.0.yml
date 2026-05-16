@@ -26,7 +26,7 @@ on:
         type: string
       rom_type:
         description: 'Tipe ROM / Tag Cabang'
-        default: '𝚁𝚊verify'
+        default: '𝚁𝚊𝚟𝚎𝚗'
         required: true
         type: string
       project_name:
