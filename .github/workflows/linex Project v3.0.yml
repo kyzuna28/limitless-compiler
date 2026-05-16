@@ -1,6 +1,6 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.0 Ultimate Final Fix - Safe RAM, Adaptive Engine & Secure Packaging
-name: Poco F1 Kernel Compiler 3.0
+# Version 3.0 / 2.8 Ultimate Hyper Fix - Core Target Isolation
+name: Poco F1 Kernel Compiler Pro
 on:
   workflow_dispatch:
     inputs:
@@ -15,18 +15,18 @@ on:
         required: true
         type: string
       kernel_version:
-        description: 'Isi angka (misal 4.19.1) atau biarkan "original" untuk versi asli'
+        description: 'Isi angka (misal 4.19.1) or biarkan "original" untuk versi asli'
         default: 'original'
         required: true
         type: string
       kernel_name:
         description: 'Nama Utama Kernel'
-        default: 'Kyzuna'
+        default: 'Southwest'
         required: true
         type: string
       rom_type:
         description: 'Tipe ROM / Tag Cabang'
-        default: 'Raven-Gki'
+        default: 'Dynamic-Gki'
         required: true
         type: string
       project_name:
@@ -35,28 +35,15 @@ on:
         required: true
         type: string
       compiler:
-        description: 'Pilih Compiler Pro'
-        default: 'aosp-clang'
+        description: 'Ketik Compiler (Opsi: aosp-clang / proton-clang / weebx-clang / zycromer-clang / sdclang)'
+        default: 'proton-clang'
         required: true
-        type: choice
-        options:
-        - aosp-clang
-        - proton-clang
-        - weebx-clang
-        - zycromer-clang
-        - sdclang
+        type: string
       aosp-clang-ver:
-        description: 'Versi Clang (Hanya jika pakai aosp-clang)'
+        description: 'Versi Clang (Hanya jika pakai aosp-clang: 11 / 12 / 13 / 14 / 15 / latest)'
         default: '11'
         required: true
-        type: choice
-        options:
-        - '11'
-        - '12'
-        - '13'
-        - '14'
-        - '15'
-        - 'latest'
+        type: string
       gpu_min_clock:
         description: 'Frekuensi MINIMAL GPU (dalam MHz, Contoh: 180 atau 257)'
         default: '180'
@@ -68,47 +55,32 @@ on:
         required: true
         type: string
       kernel-url:
-        description: 'Kernel Source URL'
-        default: 'https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git'
+        description: 'Kernel Source URL (Bisa diganti bebas)'
+        default: 'https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git'
         required: true
         type: string
       kernel-branch:
         description: 'Kernel Branch'
-        default: 'main'
+        default: 'lineage-20'
         required: true
-        type: choice
-        options:
-        - main
-        - ten
-        - eleven
-        - twelve
-        - thirteen
+        type: string
       kernel-config:
-        description: 'Kernel Config (Defconfig)'
-        default: 'beryllium_defconfig'
+        description: 'Kernel Config / Defconfig'
+        default: 'sdm845_defconfig'
         required: true
-        type: choice
-        options:
-          - beryllium_defconfig
-          - stock-beryllium_defconfig
-          - sdm845_defconfig
-          - sdm845-perf_defconfig
+        type: string
       kernelsu:
-        description: 'KernelSU (ksu/next/false)'
+        description: 'KernelSU (ksu / next / false)'
         default: 'ksu'
         required: true
-        type: choice
-        options:
-        - ksu
-        - next
-        - "false"
+        type: string
       disable-lto:
-        description: 'Disable LTO'
+        description: 'Disable LTO (true / false)'
         default: 'true'
         required: true
         type: string
       AK3:
-        description: 'AnyKernel3 Template'
+        description: 'AnyKernel3 Template URL'
         default: 'https://github.com/osm0sis/AnyKernel3'
         required: true
         type: string
@@ -119,10 +91,8 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build & Bersihkan Storage Bloatware
       run: |
-         echo "Building Poco F1 Kernel Version 3.0 Pro Ultimate Final Fix"
+         echo "Building Poco F1 Kernel Isolation Engine"
          sudo timedatectl set-timezone Asia/Jakarta
-         
-         # FIXED: Melegakan space & RAM dari bloatware bawaan Github agar tidak memicu broken pipe di driver qcacld-3.0
          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
          sudo docker image prune --all --force
 
@@ -140,12 +110,10 @@ jobs:
          else
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
-         
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
 
     - name: Optimasi Swap Space Tinggi (Anti IO Failure)
       run: |
-         # FIXED: Relokasi & Pembuatan Swap 16GB murni dari ruang kosong SSD
          sudo swapoff -a || true
          sudo rm -f /mnt/swapfile || true
          sudo fallocate -l 16G /mnt/swapfile
@@ -153,7 +121,7 @@ jobs:
          sudo mkswap /mnt/swapfile
          sudo swapon /mnt/swapfile
 
-    - name: Download Toolchains (Hybrid Setup - STABLE)
+    - name: Download Toolchains (Hybrid Setup)
       run: |
          rm -rf $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
          mkdir -p $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
@@ -185,7 +153,7 @@ jobs:
              tar -C $HOME/tmp-tc -zxf toolchain.tar.gz && rm toolchain.tar.gz
              mv $HOME/tmp-tc/*/* $HOME/tc/ 2>/dev/null || mv $HOME/tmp-tc/* $HOME/tc/
              rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
-             
+
          elif [ "${{ inputs.compiler }}" = "zycromer-clang" ]; then
              aria2c -q -o zycromer.tar.gz "https://github.com/ZyCromerZ/Clang/releases/download/Clang-16.0.6-20260510-release/Clang-16.0.6-20260510-release.tar.gz"
              tar -C $HOME/tc -zxf zycromer.tar.gz && rm zycromer.tar.gz
@@ -213,13 +181,27 @@ jobs:
          # 2. Branding Localversion
          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }} 么 ${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # 3. Clean Versioning
          touch .scmversion
          export LOCALVERSION=""
          
-         # FIX ANTISIPASI: Potong target DTB QVR yang berpotensi rusak di Makefile Qualcomm dts
-         echo "Mengamankan Makefile DTS dari file VR QVR-EVT yang korup..."
-         sed -i '/sdm845-v2-qvr-evt.dtb/d' arch/arm64/boot/dts/qcom/Makefile || true
+         # FORCE ISOLATION: Kita paksa Makefile Qualcomm DTB HANYA memproses beryllium, buang sisanya!
+         echo "Melakukan Isolasi Target DTB: Memaksa fokus hanya pada Poco F1..."
+         cd arch/arm64/boot/dts/qcom/
+         mkdir -p temp_dtb
+         # Selamatkan file dts bawaan poco f1 dan sdm845 dasar
+         [ -f sdm845-beryllium.dts ] && mv sdm845-beryllium.dts temp_dtb/ || true
+         [ -f sdm845.dtsi ] && mv sdm845.dtsi temp_dtb/ || true
+         [ -f sdm845-gpu.dtsi ] && mv sdm845-gpu.dtsi temp_dtb/ || true
+         [ -f sdm845-qusb-phy.dtsi ] && mv sdm845-qusb-phy.dtsi temp_dtb/ || true
+         find . -maxdepth 1 -type f -name "*.dts" -delete || true
+         find . -maxdepth 1 -type f -name "*.dtsi" -delete || true
+         mv temp_dtb/* . && rm -rf temp_dtb
+         
+         # Tulis ulang Makefile DTS Qualcomm khusus untuk beryllium saja
+         echo 'dtb-$(CONFIG_ARCH_SDM845) += sdm845-beryllium.dtb' > Makefile
+         echo 'always-y        := $(dtb-y)' >> Makefile
+         echo 'clean-files     := *.dtb' >> Makefile
+         cd ../../../../../
          
          # Intervensi Ekstra: Menjinakkan Defconfig USB Gadget yang corrupt
          echo "CONFIG_USB_CONFIGFS_F_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
@@ -246,8 +228,6 @@ jobs:
          if [ -f "$TARGET_DTSI" ]; then
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
              sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MIN_HZ>;/g" $TARGET_DTSI || true
-         else
-             find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
          fi
          
          # 7. KernelSU / KernelSU-Next
@@ -257,7 +237,7 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-         # 8. Fix VDSO Assembler Crash (ADAPTIVE AUTOMATION ENGINE)
+         # 8. Fix VDSO Assembler Crash
          echo "Menjinakkan Makefile VDSO secara adaptif..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
@@ -269,9 +249,8 @@ jobs:
          fi
 
          # 9. Fix LLVM Objcopy LKDTM Conflict
-         echo "Mematikan modul LKDTM untuk menghindari konflik llvm-objcopy..."
          echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         
+
     - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
          cd kernel-dir
@@ -295,16 +274,15 @@ jobs:
          mkdir -p ../out
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
-         # 1. HITUNG & BATASI CORE CPU (Sediakan ruang napas untuk RAM VM GitHub)
          TOTAL_CORES=$(nproc --all)
          if [ $TOTAL_CORES -gt 1 ]; then
              SAFE_CORES=$((TOTAL_CORES - 1))
          else
              SAFE_CORES=1
          fi
-         echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
+         echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan RAM VM..."
          
-         # 2. EKSEKUSI COMPILATION (Tanpa LD=ld.lld global, tapi kunci flag pembebas RAM ekstra)
+         # TARGET DIUBAH MENJADI 'Image.gz-dtb dtbs' AGAR PRODUKSI BINER LANGSUNG JADI SATU
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
               AR=llvm-ar \
@@ -317,11 +295,11 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               KCFLAGS="-w -Wno-error -Wl,--no-keep-memory -Wl,--reduce-memory-overheads" \
-              HOSTCFLAGS="-w -Wno-error" Image.gz dtbs 2>&1 | tee build.log
+              HOSTCFLAGS="-w -Wno-error" Image.gz-dtb dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
-             echo "ERROR: Kompilasi Gagal!"
-             tail -n 200 build.log
+             echo "ERROR: Kompilasi Gagal total!"
+             tail -n 300 build.log
              exit 1
          fi
          
@@ -333,26 +311,26 @@ jobs:
           
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           
-          # FIX JALUR: Menggunakan path absolut luar '../out' sesuai perintah O=../out saat compile
+          # SISTEM COPY PINTAR: Cek semua variasi output biner secara hierarkis
           if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
               cp ../out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [ -f ../out/arch/arm64/boot/Image.gz ] && [ -f ../out/arch/arm64/boot/dts/qcom/sdm845-v2.dtb ]; then
-              cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/qcom/sdm845-v2.dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz-dtb
-          elif [ -f ../out/arch/arm64/boot/Image.gz ] && [ -f ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb ]; then
-              cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz-dtb
           elif [ -f ../out/arch/arm64/boot/Image.gz ]; then
               cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+          elif [ -f ../out/arch/arm64/boot/Image ]; then
+              # Jika yang keluar file Image mentah, kita pakai kompresi gzip manual
+              gzip -c ../out/arch/arm64/boot/Image > AnyKernel3/Image.gz
           else
-              cp ../out/arch/arm64/boot/Image AnyKernel3/Image
+              echo "ERROR: Berkas biner kernel benar-benar tidak tercipta karena build gagal di atas!"
+              exit 1
           fi
           
           [ -f ../out/arch/arm64/boot/dtbo.img ] && cp ../out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
           
           cd AnyKernel3
           zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" * -x .git README.md
-          
+
     - name: Upload Final Build
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-3.0"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-Pro"
         path: "*.zip"
