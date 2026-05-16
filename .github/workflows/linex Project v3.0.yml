@@ -49,7 +49,6 @@ on:
         required: true
         type: choice
         options:
-        - '11'
         - '12'
         - '13'
         - '14'
@@ -163,7 +162,6 @@ jobs:
          if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
              echo "Fetching Official Google AOSP Clang..."
              case "${{ inputs.aosp-clang-ver }}" in
-                 11) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz" ;;
                  12) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-12.1.0_r27/clang-r416183b1.tar.gz" ;;
                  13) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-13.0.0_r30/clang-r450784d.tar.gz" ;;
                  14) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r15/clang-r487747c.tar.gz" ;;
