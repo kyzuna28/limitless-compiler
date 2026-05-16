@@ -230,6 +230,14 @@ jobs:
              sed -i '/cc1as/d' $VDSO_MAKEFILE || true
          fi
 
+         # 9. Fix LLVM Objcopy LKDTM Conflict (TAMBAHKAN INI)
+         echo "Mematikan modul LKDTM untuk menghindari konflik llvm-objcopy..."
+         echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
+
+         # 9. Fix LLVM Objcopy LKDTM Conflict (TAMBAHKAN INI)
+         echo "Mematikan modul LKDTM untuk menghindari konflik llvm-objcopy..."
+         echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
+
     - name: Proses Kompilasi Pro
       run: |
          cd kernel-dir
