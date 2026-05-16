@@ -1,11 +1,11 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 2.8 Final Ultimate - Fix Linker Collision & AOSP Clang Broken Pipe
+# Version 2.8 Final Ultimate - Fix Package Dropped & AOSP Clang Broken Pipe
 name: Poco F1 Kernel Compiler 2.8
 on:
   workflow_dispatch:
     inputs:
       ubuntu:
-        description: 'Run on'
+        description: 'Run on (Opsi: ubuntu-22.04 / ubuntu-latest)'
         default: 'ubuntu-22.04'
         required: true
         type: string
@@ -100,7 +100,15 @@ jobs:
     - name: Instalasi Paket Dependensi
       run: |
          sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libbio-perl libipc-cmd-perl libtinfo5
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl
+         
+         # Deteksi Pintar Pustaka libtinfo Lintas Versi Ubuntu
+         if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
+             sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || true
+         else
+             sudo apt-get install --no-install-recommends -y libtinfo5 || true
+         fi
+         
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
 
     - name: Optimasi Swap Space
@@ -199,8 +207,8 @@ jobs:
 
          # 6. Smart GPU Clock Engine (Inject Overclock & Downclock)
          echo "Menyelaraskan Frekuensi Custom GPU..."
-         MIN_HZ=$((${{ inputs.gpu_min_clock }} * 1000000))
-         MAX_HZ=$((${{ inputs.gpu_max_clock }} * 1000000))
+         MIN_HZ=$((${ inputs.gpu_min_clock }} * 1000000))
+         MAX_HZ=$((${ inputs.gpu_max_clock }} * 1000000))
          TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
          if [ -f "$TARGET_DTSI" ]; then
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
@@ -225,7 +233,7 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
-         # Proteksi Khusus Pipa Rusak (Broken Pipe) pada AOSP / SDClang
+         # Pembasmi Utama Broken Pipe (Matikan LLVM_IAS khusus AOSP/SDClang)
          if [ "${{ inputs.compiler }}" = "aosp-clang" ] || [ "${{ inputs.compiler }}" = "sdclang" ]; then
              echo "Menggunakan Standar AOSP/SDClang: Mematikan LLVM_IAS..."
              USE_IAS=0
