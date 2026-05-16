@@ -25,8 +25,8 @@ on:
         required: true
         type: string
       rom_type:
-        description: 'Tipe ROM/Tag (Contoh: 𝚁𝚊𝚟𝚎𝚗)'
-        default: '𝚁𝚊𝚟𝚎𝚗'
+        description: 'Tipe ROM/Tag (Contoh: 𝚁𝚊verify)'
+        default: '𝚁𝚊verify'
         required: true
         type: string
       project_name:
@@ -36,7 +36,7 @@ on:
         type: string
       compiler:
         description: 'Ketik Compiler (Opsi: aosp-clang / proton-clang / weebx-clang / zycromer-clang / sdclang)'
-        default: 'weebx-clang'
+        default: 'proton-clang'
         required: true
         type: string
       aosp-clang-ver:
@@ -102,7 +102,6 @@ jobs:
          sudo apt-get update
          sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl
          
-         # Deteksi Pintar Pustaka libtinfo Lintas Versi Ubuntu
          if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
              sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || true
          else
@@ -128,13 +127,11 @@ jobs:
          rm -rf $HOME/tc $HOME/gcc-64 $HOME/gcc-32
          mkdir -p $HOME/tc $HOME/gcc-64 $HOME/gcc-32
          
-         # GCC 4.9 Wajib untuk stabilitas kernel 4.9 lama (beryllium sdm845)
          aria2c -q -o gcc-64.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz"
          tar -C $HOME/gcc-64 -zxf gcc-64.tar.gz && rm gcc-64.tar.gz
          aria2c -q -o gcc-32.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz"
          tar -C $HOME/gcc-32 -zxf gcc-32.tar.gz && rm gcc-32.tar.gz
          
-         # Logika Download Compiler Berdasarkan Teks Input Manual
          if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
              case "${{ inputs.aosp-clang-ver }}" in
                  11) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz" ;;
@@ -148,25 +145,21 @@ jobs:
              tar -C $HOME/tc -zxf tc.tar.gz && rm tc.tar.gz
          
          elif [ "${{ inputs.compiler }}" = "proton-clang" ]; then
-             echo "Downloading Proton Clang..."
              aria2c -q -o proton.tar.gz "https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
              tar -C $HOME/tc --strip-components=1 -zxf proton.tar.gz && rm proton.tar.gz
              rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
 
          elif [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
-             echo "Downloading Official WeebX (Yuki) Clang Tarball..."
              aria2c -q -o weebx.tar.gz "https://github.com/Klozz/Yuki-clang/archive/refs/heads/master.tar.gz"
              tar -C $HOME/tc --strip-components=1 -zxf weebx.tar.gz && rm weebx.tar.gz
              rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
 
          elif [ "${{ inputs.compiler }}" = "zycromer-clang" ]; then
-             echo "Downloading Verified ZyCromerZ Clang Stable Build..."
              aria2c -q -o zycromer.tar.gz "https://github.com/ZyCromerZ/Clang/releases/download/Clang-16.0.6-20260510-release/Clang-16.0.6-20260510-release.tar.gz"
              tar -C $HOME/tc --strip-components=1 -zxf zycromer.tar.gz && rm zycromer.tar.gz
              rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
 
          elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
-             echo "Cloning Snapdragon LLVM Compiler (SDClang)..."
              git clone --depth=1 https://github.com/WeeAris/SDClang.git $HOME/tc
          fi
 
@@ -179,20 +172,19 @@ jobs:
          
          # 1. Logika Versi Kernel (Makefile)
          if [ "${{ inputs.kernel_version }}" != "original" ] && [ "${{ inputs.kernel_version }}" != "" ]; then
-             echo "Manually setting kernel version to: ${{ inputs.kernel_version }}"
              sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
              sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
              sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
          fi
          
-         # 2. Branding Localversion (Otomatis Mengubah Tanda Hubung '-' Menjadi Simbol '么' dengan Spasi Seimbang)
+         # 2. Branding Localversion (Branding Simbol Me Sukses)
          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }} 么 ${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # 3. Clean Versioning (No '+' or '-dirty')
+         # 3. Clean Versioning
          touch .scmversion
          export LOCALVERSION=""
          
-         # 4. APatch Support Fix (Kallsyms & Kprobes)
+         # 4. APatch Support Fix
          echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
@@ -205,10 +197,10 @@ jobs:
              echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          fi
 
-         # 6. Smart GPU Clock Engine (Inject Overclock & Downclock)
-         echo "Menyelaraskan Frekuensi Custom GPU..."
-         MIN_HZ=$(($} * 1000000))
-         MAX_HZ=$(($} * 1000000))
+         # 6. Smart GPU Clock Engine (Sintaks Kokoh)
+         echo "Mengonfigurasi Frekuensi GPU..."
+         MIN_HZ=$(($(echo ${{ inputs.gpu_min_clock }}) * 1000000))
+         MAX_HZ=$(($(echo ${{ inputs.gpu_max_clock }}) * 1000000))
          TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
          if [ -f "$TARGET_DTSI" ]; then
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
@@ -224,7 +216,7 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-         # 8. Fix VDSO Assembler Crash (Sapu Bersih Hardcoded Clang Assembler)
+         # 8. Fix VDSO Assembler Crash
          echo "Menjinakkan Makefile VDSO agar patuh pada GCC Assembler..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
@@ -238,16 +230,12 @@ jobs:
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
-         # Branding Host/User (@project-labs)
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
-         # Pembasmi Utama Broken Pipe (Matikan LLVM_IAS khusus AOSP/SDClang)
          if [ "${{ inputs.compiler }}" = "aosp-clang" ] || [ "${{ inputs.compiler }}" = "sdclang" ]; then
-             echo "Menggunakan Standar AOSP/SDClang: Mematikan LLVM_IAS..."
              USE_IAS=0
          else
-             echo "Menggunakan Custom Clang Pro: Mengaktifkan LLVM_IAS..."
              USE_IAS=1
          fi
          
@@ -266,33 +254,23 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu-"
 
-         echo "Membentuk konfigurasi defconfig..."
          make $args ${{ inputs.kernel-config }}
-         
-         echo "Memulai kompilasi kernel (Log dialihkan ke build.log)..."
          make -k -j$(nproc --all) $args 2>&1 | tee build.log
          
-         # Cek hasil akhir kompilasi sebelum dikemas
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
-             echo "===================================================="
-             echo "         !!! PROSES KOMPILASI GAGAL !!!             "
-             echo "===================================================="
-             echo "Menampilkan 200 baris log terakhir yang berisi error:"
-             echo "----------------------------------------------------"
+             echo "ERROR: Kompilasi Gagal!"
              tail -n 200 build.log
-             echo "----------------------------------------------------"
              exit 1
          fi
 
-    - name: Smart Packaging
+    - name: Smart Packaging (FIXED PATH OUTPUT)
       run: |
           git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
           rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
           
-          # Inject ZIP name to AK3
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           
-          # Copying Image
+          # Perbaikan Teliti: Memanggil output dari folder '../out' secara absolut
           cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb || cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp out/arch/arm64/boot/Image AnyKernel3/Image
           [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
           
