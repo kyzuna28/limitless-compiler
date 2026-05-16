@@ -213,7 +213,7 @@ jobs:
              sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
          fi
          
-         # 2. Branding Localversion (Otomatis Mengubah Tanda Hubung '-' Menjadi Simbol '么' dengan Spasi Seimbang)
+         # 2. Branding Localversion
          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }} 么 ${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
          
          # 3. Clean Versioning (No '+' or '-dirty')
@@ -233,14 +233,14 @@ jobs:
              echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          fi
 
-         # 6. Injection Mesin Frekuensi GPU Custom (Overclock / Downclock)
+         # 6. Injection Mesin Frekuensi GPU Custom
          echo "Mengonfigurasi Frekuensi GPU..."
-         MIN_HZ=$(($} * 1000000))
-         MAX_HZ=$(($} * 1000000))
+         MIN_HZ=$((${ {inputs.gpu_min_clock} }} * 1000000))
+         MAX_HZ=$((${ {inputs.gpu_max_clock} }} * 1000000))
          TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
          if [ -f "$TARGET_DTSI" ]; then
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
-             sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/g" $TARGET_DTSI || true
+             sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MIN_HZ>;/g" $TARGET_DTSI || true
          else
              find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
          fi
