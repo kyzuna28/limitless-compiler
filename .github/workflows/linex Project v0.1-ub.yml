@@ -1,6 +1,6 @@
 # linex Project - Customized for Poco F1 (beryllium)
 # Version 3.0.1 Ultimate Final Fix - Safe RAM, Adaptive Engine & Secure Packaging
-name: Poco F1 Kernel Compiler full speed 3.0
+name: 3.0 fix tes
 
 on:
   workflow_dispatch:
@@ -41,30 +41,20 @@ on:
         required: true
         type: choice
         options:
-          - aosp-clang
-          - proton-clang
-          - weebx-clang
+        - aosp-clang
+        - proton-clang
+        - weebx-clang
       aosp-clang-ver:
         description: 'Versi Clang (Hanya jika pakai aosp-clang)'
         default: '12'
         required: true
         type: choice
         options:
-          - '12'
-          - '13'
-          - '14'
-          - '15'
-          - 'latest'
-      gpu_min_clock:
-        description: 'Frekuensi MINIMAL GPU (dalam MHz, Contoh: 180 atau 257)'
-        default: '180'
-        required: true
-        type: string
-      gpu_max_clock:
-        description: 'Frekuensi MAKSIMAL GPU / OC (dalam MHz, Contoh: 710, 800, 825)'
-        default: '800'
-        required: true
-        type: string
+        - '12'
+        - '13'
+        - '14'
+        - '15'
+        - 'latest'
       kernel-url:
         description: 'Kernel Source URL'
         default: 'https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git'
@@ -76,11 +66,11 @@ on:
         required: true
         type: choice
         options:
-          - main
-          - ten
-          - eleven
-          - twelve
-          - thirteen
+        - main
+        - ten
+        - eleven
+        - twelve
+        - thirteen
       kernel-config:
         description: 'Kernel Config (Defconfig)'
         default: 'beryllium_defconfig'
@@ -97,18 +87,18 @@ on:
         required: true
         type: choice
         options:
-          - ksu
-          - next
-          - "false"
+        - ksu
+        - next
+        - "false"
       lto_type:
         description: 'Pilih Mode LTO (Link Time Optimization)'
         default: 'disable'
         required: true
         type: choice
         options:
-          - disable
-          - enable
-          - thinlto
+        - disable
+        - enable
+        - thinlto
       AK3:
         description: 'AnyKernel3 Template'
         default: 'https://github.com/osm0sis/AnyKernel3'
@@ -132,7 +122,7 @@ jobs:
     - name: Instalasi Paket Dependensi
       run: |
          sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev ccache
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev
          
          if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
              sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || true
@@ -140,16 +130,7 @@ jobs:
          else
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
-         
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
-
-    - name: Setup Kernel Ccache (Engine Akselerasi)
-      uses: actions/cache@v4
-      with:
-        path: ~/.ccache
-        key: kernel-ccache-${{ inputs.compiler }}-${{ github.sha }}
-        restore-keys: |
-          kernel-ccache-${{ inputs.compiler }}-
 
     - name: Optimasi Swap Space Tinggi (Anti IO Failure)
       run: |
@@ -213,10 +194,11 @@ jobs:
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
-         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\" ${{ inputs.kernel_name }} 么 ${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
+         # FIX NAMA KERNEL: Injeksi langsung ke file defconfig target
+         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-${{ inputs.kernel_name }}-么-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
          
-         touch .scmversion
-         export LOCALVERSION=""
+         # Bersihkan file scmversion bawaan agar string penamaan lokal tidak dipotong sistem git kbuild
+         rm -f .scmversion
          
          # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
          echo "Menjinakkan driver Elliptic Ultrasound Techpack..."
@@ -289,22 +271,6 @@ jobs:
              echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
 
-         # 7. POTONG DEBUG INFO (SPEED ACCELERATION ENGINE)
-         echo "Memotong sisa-sisa Debug Info biar compile ngebut..."
-         sed -i 's/CONFIG_DEBUG_INFO=y/CONFIG_DEBUG_INFO=n/g' $TARGET_CONFIG || true
-         echo "CONFIG_DEBUG_INFO=n" >> $TARGET_CONFIG
-
-         echo "Mengonfigurasi Frekuensi GPU..."
-         MIN_HZ=$(($(echo ${{ inputs.gpu_min_clock }}) * 1000000))
-         MAX_HZ=$(($(echo ${{ inputs.gpu_max_clock }}) * 1000000))
-         TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
-         if [ -f "$TARGET_DTSI" ]; then
-             sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
-             sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/g" $TARGET_DTSI || true
-         else
-             find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
-         fi
-         
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
@@ -314,7 +280,7 @@ jobs:
          # ================= INJEKSI FIX BROKEN PIPE UNTUK CLANG 11-13 =================
          echo "Menyuntikkan perbaikan macro string asm vgettimeofday..."
          find . -name "vgettimeofday.c" -exec sed -i 's/explicit "cc"/:"cc"/g' {} + || true
-         
+
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
              if [ "${{ inputs.compiler }}" = "aosp-clang" ] && { [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; }; then
@@ -323,22 +289,19 @@ jobs:
              fi
          fi
          # ==============================================================================
-         
+
          sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
          echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
-         
-    - name: Proses Kompilasi Pro (SPEED MULTITHREADING + CCACHE ENGINE)
+
+    - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
+         
+         # MENYELURUS: Oper string penamaan ke lingkungan runtime Kbuild agar nempel permanen di biner kernel
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
-         
-         # Inisialisasi Ccache lingkungan lokal
-         export CCACHE_DIR=$HOME/.ccache
-         export PATH="/usr/lib/ccache:$PATH"
-         ccache -M 5G
-         ccache -z
+         export LOCALVERSION="-${{ inputs.kernel_name }}-么-${{ inputs.rom_type }}"
          
          # DETEKSI OTOMATIS IAS BERDASARKAN COMPILER DEMI KEAMANAN STRUKTUR ASSEMBLY
          if [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
@@ -358,10 +321,15 @@ jobs:
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
          TOTAL_CORES=$(nproc --all)
-         echo "Menggunakan Kecepatan Penuh Gila-gilaan: $TOTAL_CORES Core dengan Ccache!"
+         if [ $TOTAL_CORES -gt 1 ]; then
+             SAFE_CORES=$((TOTAL_CORES - 1))
+         else
+             SAFE_CORES=1
+         fi
+         echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
-         make -j$TOTAL_CORES ARCH=arm64 O=../out \
-              CC="ccache clang" \
+         make -j$SAFE_CORES ARCH=arm64 O=../out \
+              CC=clang \
               AR=llvm-ar \
               NM=llvm-nm \
               OBJCOPY=llvm-objcopy \
@@ -375,78 +343,68 @@ jobs:
               KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
-         echo "=== Statistik Penggunaan Compiler Cache (Ccache) ==="
-         ccache -s
-         
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "ERROR: Kompilasi Gagal!"
              tail -n 300 build.log
              exit 1
          fi
          
-    - name: Smart Packaging (SAFE EXTRACTION - MULTI PATH DETECTOR)
+    - name: Mengumpulkan Biner Mentah Kernel (No ZIP / Mentahan)
       run: |
-          rm -f *.zip
-          git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
-          rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
+          mkdir -p $GITHUB_WORKSPACE/kernel_binaries
           
-          [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
-          
+          # 1. Tentukan variabel jalur pencarian biner utama
           BIN_DIR=""
           if [ -f "../out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "../out/arch/arm64/boot/Image.gz" ]; then
               BIN_DIR="../out/arch/arm64/boot"
-              echo "Biner ditemukan di Jalur Luar (../out)"
           elif [ -f "arch/arm64/boot/Image.gz-dtb" ] || [ -f "arch/arm64/boot/Image.gz" ]; then
               BIN_DIR="arch/arm64/boot"
-              echo "Biner ditemukan di Jalur Internal (kernel-dir/arch)"
           elif [ -f "out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "out/arch/arm64/boot/Image.gz" ]; then
               BIN_DIR="out/arch/arm64/boot"
-              echo "Biner ditemukan di Jalur Sub-Out (kernel-dir/out)"
           fi
 
+          # 2. Proses Auto-Jahit Biar Ga Ribet Terpisah
           if [ -n "$BIN_DIR" ]; then
               if [ -f "$BIN_DIR/Image.gz-dtb" ]; then
-                  echo "Menyalin Image.gz-dtb ke AnyKernel3..."
-                  cp $BIN_DIR/Image.gz-dtb AnyKernel3/Image.gz-dtb
+                  echo "MANTAP: Image.gz-dtb bawaan ditemukan, langsung disalin."
+                  cp $BIN_DIR/Image.gz-dtb $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
               elif [ -f "$BIN_DIR/Image.gz" ]; then
-                  echo "Menyalin Image.gz standar..."
+                  echo "INFO: Cuma ada Image.gz standar. Memulai proses jahit otomatis dengan DTB..."
+                  
+                  # Cari file DTB spesifik sdm845 / beryllium
+                  DTB_PATH=""
                   if [ -f "$BIN_DIR/dts/qcom/sdm845-beryllium.dtb" ]; then
-                      cat $BIN_DIR/Image.gz $BIN_DIR/dts/qcom/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
+                      DTB_PATH="$BIN_DIR/dts/qcom/sdm845-beryllium.dtb"
                   elif [ -f "$BIN_DIR/dts/sdm845-beryllium.dtb" ]; then
-                      cat $BIN_DIR/Image.gz $BIN_DIR/dts/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
-                  else
-                      cp $BIN_DIR/Image.gz AnyKernel3/Image.gz
+                      DTB_PATH="$BIN_DIR/dts/sdm845-beryllium.dtb"
                   fi
-              elif [ -f "$BIN_DIR/Image" ]; then
-                  cp $BIN_DIR/Image AnyKernel3/Image
+                  
+                  if [ -n "$DTB_PATH" ]; then
+                      # Menjahit Image.gz + DTB menjadi Image.gz-dtb tunggal
+                      cat $BIN_DIR/Image.gz $DTB_PATH > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
+                      echo "SUKSES: File berhasil dijahit menjadi Image.gz-dtb!"
+                  else
+                      echo "PERINGATAN: File DTB ga ketemu, terpaksa salin Image.gz apa adanya."
+                      cp $BIN_DIR/Image.gz $GITHUB_WORKSPACE/kernel_binaries/Image.gz
+                  fi
               fi
           else
-              echo "ERROR: Biner kernel benar-benar gaib! Tidak ditemukan di jalur manapun."
+              echo "ERROR: Biner kernel tidak ditemukan!"
               exit 1
           fi
           
-          # HAPUS baris lu yang "if [ -f "../out/arch/arm6_" KEMUDIAN PASTE KODE PERBAIKAN DI SINI:
-          
-          # === PERBAIKAN: Menyambung pengecekan dtbo.img yang terputus ===
+          # 3. Tetap salin DTBO (opsional, hanya jika kernel lu memproduksinya)
           if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
-              echo "dtbo.img ditemukan di direktori out luar."
-              cp ../out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
+              cp ../out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
           elif [ -f "arch/arm64/boot/dtbo.img" ]; then
-              echo "dtbo.img ditemukan di direktori internal."
-              cp arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
+              cp arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
           elif [ -f "out/arch/arm64/boot/dtbo.img" ]; then
-              echo "dtbo.img ditemukan di direktori out dalam."
-              cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
+              cp out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
           fi
-          
-          # === PERBAIKAN: Proses Kompresi Zip yang Aman ===
-          cd AnyKernel3
-          zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" ./* -x ".git*" "README.md"
-          cd ..
 
-    # === PERBAIKAN: Menambahkan Step Upload agar Hasil Build Bisa Diunduh ===
-    - name: Unggah Hasil Kompilasi Kernel
+    - name: Upload Biner Mentah Kernel
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Package"
-        path: "${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
+        path: kernel_binaries/*
+        
