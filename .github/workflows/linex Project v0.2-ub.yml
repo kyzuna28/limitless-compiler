@@ -1,85 +1,373 @@
-name: Build NGK Beryllium Kernel (LLVM20)
+# linex Project - Customized for Poco F1 (beryllium)
+# Version 3.3 Dynamic Engine - Safe RAM, Anti-Elliptic Linker & Secure Packaging
+name: Poco F1 Multi-Source kernel punya brach 11
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "C-*"
+    inputs:
+      ubuntu:
+        description: 'Run on (Opsi: ubuntu-22.04 / ubuntu-latest)'
+        default: 'ubuntu-22.04'
+        required: true
+        type: string
+      zip_name:
+        description: 'Nama File ZIP Akhir'
+        default: 'Beryllium'
+        required: true
+        type: string
+      kernel_version:
+        description: 'Isi angka (misal 4.19.1) atau biarkan "original" untuk versi asli'
+        default: 'original'
+        required: true
+        type: string
+      kernel_name:
+        description: 'Nama Utama Kernel'
+        default: 'Kyzuna'
+        required: true
+        type: string
+      rom_type:
+        description: 'Tipe ROM / Tag Cabang'
+        default: 'Raven-Gki'
+        required: true
+        type: string
+      project_name:
+        description: 'Build Project (@nama-project)'
+        default: 'kyy'
+        required: true
+        type: string
+      compiler:
+        description: 'Pilih Compiler Pro'
+        default: 'aosp-clang'
+        required: true
+        type: choice
+        options:
+        - aosp-clang
+        - proton-clang
+        - weebx-clang
+      aosp-clang-ver:
+        description: 'Versi Clang (Hanya jika pakai aosp-clang)'
+        default: '14'
+        required: true
+        type: choice
+        options:
+        - '12'
+        - '13'
+        - '14'
+        - '15'
+        - 'latest'
+      kernel-url:
+        description: 'Bebas Masukkan URL Kernel Source Lu'
+        default: 'https://github.com/xiaomi-sdm845-devel/kernel_xiaomi_sdm845.git'
+        required: true
+        type: string
+      kernel-branch:
+        description: 'Bebas Ketik Manual Nama Branch Target'
+        default: 'stable/11'
+        required: true
+        type: string
+      kernel-config:
+        description: 'Bebas Ketik Manual Nama Defconfig Target'
+        default: 'sdm845-perf_defconfig'
+        required: true
+        type: string
+      kernelsu:
+        description: 'KernelSU (ksu/next/false)'
+        default: 'ksu'
+        required: true
+        type: choice
+        options:
+        - ksu
+        - next
+        - "false"
+      lto_type:
+        description: 'Pilih Mode LTO (Link Time Optimization)'
+        default: 'disable'
+        required: true
+        type: choice
+        options:
+        - disable
+        - enable
+        - thinlto
+      AK3:
+        description: 'AnyKernel3 Template'
+        default: 'https://github.com/osm0sis/AnyKernel3'
+        required: true
+        type: string
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
-
+    runs-on: ${{ inputs.ubuntu }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Mempersiapkan Lingkungan Build & Bersihkan Storage Bloatware
+      run: |
+         echo "Building Poco F1 Kernel Version 3.3 Dynamic Engine"
+         sudo timedatectl set-timezone Asia/Jakarta
+         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+         sudo docker image prune --all --force
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y git bc bison flex build-essential libssl-dev libelf-dev python3
+    - name: Checkout Workflow
+      uses: actions/checkout@v4
 
-      - name: Setup LLVM Toolchain
-        run: |
-          mkdir -p $HOME/llvm-20.1.8-x86_64
-          echo "NOTE: pastikan LLVM sudah tersedia atau cached"
+    - name: Instalasi Paket Dependensi
+      run: |
+         sudo apt-get update
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev
+         
+         if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
+             sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || true
+             sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.6.0 || true
+         else
+             sudo apt-get install --no-install-recommends -y libtinfo5 || true
+         fi
+         aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
 
-      - name: Clone NGK Kernel (s-caf)
-        run: |
-          git clone -b s-caf https://github.com/Pierre2324/NGK_android_kernel_xiaomi_sdm845.git kernel
-          cd kernel
-          git submodule update --init --recursive
+    - name: Optimasi Swap Space Tinggi (Anti IO Failure)
+      run: |
+         sudo swapoff -a || true
+         sudo rm -f /mnt/swapfile || true
+         sudo fallocate -l 16G /mnt/swapfile
+         sudo chmod 600 /mnt/swapfile
+         sudo mkswap /mnt/swapfile
+         sudo swapon /mnt/swapfile
 
-      - name: Build Kernel
-        run: |
-          # ===== TOOLCHAIN =====
-          TL_PATH="$HOME/llvm-20.1.8-x86_64"
-          export PATH="$TL_PATH/bin:$PATH"
+    - name: Download Toolchains (Clean Setup - No Drama)
+      run: |
+         rm -rf $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
+         mkdir -p $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
+         
+         echo "Downloading GCC Companion Toolchains..."
+         aria2c -q -o gcc-64.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz"
+         tar -C $HOME/gcc-64 -zxf gcc-64.tar.gz && rm gcc-64.tar.gz
+         aria2c -q -o gcc-32.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz"
+         tar -C $HOME/gcc-32 -zxf gcc-32.tar.gz && rm gcc-32.tar.gz
+         
+         if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
+             echo "Fetching Official Google AOSP Clang..."
+             case "${{ inputs.aosp-clang-ver }}" in
+                 12) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-12.1.0_r27/clang-r416183b1.tar.gz" ;;
+                 13) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-13.0.0_r30/clang-r450784d.tar.gz" ;;
+                 14) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r15/clang-r487747c.tar.gz" ;;
+                 15) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android15-gsi/clang-r510928.tar.gz" ;;
+                 *) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz" ;;
+             esac
+             aria2c -q -o tc.tar.gz "$URL"
+             tar -C $HOME/tc -zxf tc.tar.gz && rm tc.tar.gz
+         
+         elif [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
+             if [ "${{ inputs.compiler }}" = "proton-clang" ]; then
+                 echo "Fetching Proton Clang (Master Branch)..."
+                 URL="https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
+             else
+                 echo "Fetching WeebX/Yuki Clang (Master Branch)..."
+                 URL="https://github.com/Klozz/Yuki-clang/archive/refs/heads/master.tar.gz"
+             fi
+             aria2c -q -o toolchain.tar.gz "$URL"
+             tar -C $HOME/tmp-tc -zxf toolchain.tar.gz && rm toolchain.tar.gz
+             mv $HOME/tmp-tc/*/* $HOME/tc/ 2>/dev/null || mv $HOME/tmp-tc/* $HOME/tc/
+             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
+         fi
+         rm -rf $HOME/tmp-tc
 
-          # ===== BUILD INFO =====
-          export KBUILD_BUILD_USER="ducky"
-          export KBUILD_BUILD_HOST="lotsofduck"
+    - name: Clone Kernel Source
+      run: git clone --depth=1 ${{ inputs.kernel-url }} -b "${{ inputs.kernel-branch }}" kernel-dir
 
-          # ===== ARCH =====
-          export ARCH=arm64
-          export SUBARCH=arm64
+    - name: Pro Configuration Engine
+      run: |
+         cd kernel-dir
+         
+         if [ "${{ inputs.kernel_version }}" != "original" ] && [ "${{ inputs.kernel_version }}" != "" ]; then
+             sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
+             sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
+             sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
+         fi
+         
+         TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
+         
+         # FIX NAMA KERNEL
+         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-${{ inputs.kernel_name }}-么-${{ inputs.rom_type }}\"/g" "$TARGET_CONFIG" || true
+         rm -f .scmversion
+         
+         # ===== ANTI-ELLIPTIC ULTRASOUND ULTIMATE PATCH =====
+         echo "Menonaktifkan total driver Elliptic Ultrasound..."
+         # Amankan file defconfig utama
+         sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' "$TARGET_CONFIG" || true
+         echo "CONFIG_AUDIO_ELLIPTIC=n" >> "$TARGET_CONFIG"
+         
+         # Buru semua sub-config audio bertingkat di folder techpack / vendor
+         find . -name "*.config" -o -name "*_defconfig" | xargs sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' 2>/dev/null || true
+         find . -name "*.config" -o -name "*_defconfig" | xargs sed -i '/CONFIG_AUDIO_ELLIPTIC/d' 2>/dev/null || true
+         
+         # Potong jalur kompilasi objek elliptic di Makefile audio
+         find techpack/audio/ -name "Makefile" | xargs sed -i 's/obj-$(CONFIG_AUDIO_ELLIPTIC)/# disabled-elliptic/g' 2>/dev/null || true
+         find drivers/ -name "Makefile" | xargs sed -i 's/obj-$(CONFIG_AUDIO_ELLIPTIC)/# disabled-elliptic/g' 2>/dev/null || true
+         # ===================================================
+         
+         # FIXED EFI STUB LINKER ERROR
+         echo "Menonaktifkan EFI dan EFI_STUB..."
+         sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' "$TARGET_CONFIG" || true
+         sed -i 's/CONFIG_EFI_STUB=y/CONFIG_EFI_STUB=n/g' "$TARGET_CONFIG" || true
+         echo "CONFIG_EFI=n" >> "$TARGET_CONFIG"
+         echo "CONFIG_EFI_STUB=n" >> "$TARGET_CONFIG"
+         if [ -f drivers/firmware/Makefile ]; then
+             sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
+         fi
 
-          # ===== OUT DIR =====
-          OUT_DIR="out"
+         # FIX TOTAL SECTION MISMATCH WARNINGS
+         echo "Membungkam peringatan Section Mismatch..."
+         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> "$TARGET_CONFIG"
+         echo "CONFIG_DEBUG_SECTION_MISMATCH=n" >> "$TARGET_CONFIG"
+         sed -i 's/CONFIG_DEBUG_SECTION_MISMATCH=y/CONFIG_DEBUG_SECTION_MISMATCH=n/g' "$TARGET_CONFIG" || true
 
-          # ===== DEFCONFIG =====
-          DEFCONFIG="beryllium_defconfig"
+         # CLEANSING RANJAU DTS QUALCOMM
+         sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
+         sed -i '/qvr-evt/d' arch/arm64/boot/dts/qcom/Makefile || true
+         sed -i '/qvr-dvt/d' arch/arm64/boot/dts/qcom/Makefile || true
+         sed -i '/sdm845-interposer/d' arch/arm64/boot/dts/qcom/Makefile || true
+         sed -i 's/CONFIG_USB_CONFIGFS_F_DIAG=y/CONFIG_USB_CONFIGFS_F_DIAG=n/g' "$TARGET_CONFIG" || true
+         sed -i 's/CONFIG_USB_F_QDSS=y/CONFIG_USB_F_QDSS=n/g' "$TARGET_CONFIG" || true
+         
+         echo "CONFIG_KALLSYMS=y" >> "$TARGET_CONFIG"
+         echo "CONFIG_KALLSYMS_ALL=y" >> "$TARGET_CONFIG"
+         echo "CONFIG_KPROBES=y" >> "$TARGET_CONFIG"
+         echo "CONFIG_HAVE_KPROBES=y" >> "$TARGET_CONFIG"
+         
+         # AUTO-SELECT LTO ENGINE
+         SELECTED_LTO="${{ inputs.lto_type }}"
+         sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' "$TARGET_CONFIG" || true
+         sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' "$TARGET_CONFIG" || true
+         sed -i 's/CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/g' "$TARGET_CONFIG" || true
+         sed -i 's/CONFIG_LTO_NONE=.*/# CONFIG_LTO_NONE is not set/g' "$TARGET_CONFIG" || true
+         if [ "$SELECTED_LTO" = "enable" ]; then
+             echo "CONFIG_LTO=y" >> "$TARGET_CONFIG"
+             echo "CONFIG_LTO_CLANG=y" >> "$TARGET_CONFIG"
+         elif [ "$SELECTED_LTO" = "thinlto" ]; then
+             echo "CONFIG_LTO=y" >> "$TARGET_CONFIG"
+             echo "CONFIG_LTO_CLANG=y" >> "$TARGET_CONFIG"
+             echo "CONFIG_THINLTO=y" >> "$TARGET_CONFIG"
+         else
+             echo "CONFIG_LTO_NONE=y" >> "$TARGET_CONFIG"
+         fi
 
-          # ===== THREADS =====
-          PROCS=$(nproc --all)
+         # COMPATIBILITY PATCH FOR ANDROID 10
+         echo "CONFIG_ANDROID_BINDERFS=y" >> "$TARGET_CONFIG"
+         echo "CONFIG_CGROUPS=y" >> "$TARGET_CONFIG"
+         echo "CONFIG_MEMCG=y" >> "$TARGET_CONFIG"
+         echo "CONFIG_MEMCG_SWAP=y" >> "$TARGET_CONFIG"
 
-          # ===== CONFIG FRAGMENTS =====
-          FRAG1="arch/arm64/configs/vendor/xiaomi/sdm845-common.config"
-          FRAG2="arch/arm64/configs/vendor/xiaomi/beryllium.config"
+         if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
+            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+         elif [ "${{ inputs.kernelsu }}" = "next" ]; then
+            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+         fi
 
-          # ===== MAKE FLAGS =====
-          MAKE_ARGS=(
-            O=$OUT_DIR
-            ARCH=arm64
-            CC=clang
-            HOSTCC=clang
-            HOSTCXX=clang++
-            LD=ld.lld
-            AR=llvm-ar
-            NM=llvm-nm
-            OBJCOPY=llvm-objcopy
-            OBJDUMP=llvm-objdump
-            STRIP=llvm-strip
-            READELF=llvm-readelf
-            CLANG_TRIPLE=aarch64-linux-gnu-
-            CROSS_COMPILE=aarch64-linux-gnu-
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-            LLVM=1
-            LLVM_IAS=1
-          )
+         # FIX BROKEN PIPE
+         find . -name "vgettimeofday.c" -exec sed -i 's/explicit "cc"/:"cc"/g' {} + || true
+         VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
+         if [ -f "$VDSO_MAKEFILE" ]; then
+             if [ "${{ inputs.compiler }}" = "aosp-clang" ] && { [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; }; then
+                 sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
+                 sed -i '/cc1as/d' $VDSO_MAKEFILE || true
+             fi
+         fi
 
-          cd kernel
+         sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' "$TARGET_CONFIG" || true
+         echo "CONFIG_LKDTM=n" >> "$TARGET_CONFIG"
 
-          echo "Cleaning..."
-          rm -rf $OUT_DIR
-          mkdir -p $OUT_DIR
+    - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
+      run: |
+         cd kernel-dir
+         export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
+         
+         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
+         export KBUILD_BUILD_HOST="project-labs"
+         export LOCALVERSION="-${{ inputs.kernel_name }}-么-${{ inputs.rom_type }}"
+         
+         if [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
+             USE_IAS=1
+         else
+             if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
+                 USE_IAS=0
+             else
+                 USE_IAS=1
+             fi
+         fi
+         
+         rm -rf ../out && mkdir -p ../out
+         make ARCH=arm64 O=../out "${{ inputs.kernel-config }}"
+         
+         TOTAL_CORES=$(nproc --all)
+         if [ $TOTAL_CORES -gt 1 ]; then
+             SAFE_CORES=$((TOTAL_CORES - 1))
+         else
+             SAFE_CORES=1
+         fi
+         
+         make -j$SAFE_CORES ARCH=arm64 O=../out \
+              CC=clang \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              STRIP=aarch64-linux-android-strip \
+              LLVM_IAS=$USE_IAS \
+              CROSS_COMPILE=aarch64-linux-android- \
+              CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              GCC_TOOLCHAIN=$HOME/gcc-64 \
+              KCFLAGS="-w -Wno-error -fno-builtin" \
+              HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
+         
+         if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
+             echo "ERROR: Kompilasi Gagal!"
+             tail -n 300 build.log
+             exit 1
+         fi
+         
+    - name: Mengumpulkan Biner Mentah Kernel (No ZIP / Mentahan)
+      run: |
+          mkdir -p $GITHUB_WORKSPACE/kernel_binaries
+          
+          BIN_DIR=""
+          if [ -f "../out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "../out/arch/arm64/boot/Image.gz" ]; then
+              BIN_DIR="../out/arch/arm64/boot"
+          elif [ -f "arch/arm64/boot/Image.gz-dtb" ] || [ -f "arch/arm64/boot/Image.gz" ]; then
+              BIN_DIR="arch/arm64/boot"
+          elif [ -f "out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "out/arch/arm64/boot/Image.gz" ]; then
+              BIN_DIR="out/arch/arm64/boot"
+          fi
+
+          if [ -n "$BIN_DIR" ]; then
+              if [ -f "$BIN_DIR/Image.gz-dtb" ]; then
+                  cp $BIN_DIR/Image.gz-dtb $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
+              elif [ -f "$BIN_DIR/Image.gz" ]; then
+                  DTB_PATH=""
+                  if [ -f "$BIN_DIR/dts/qcom/sdm845-beryllium.dtb" ]; then
+                      DTB_PATH="$BIN_DIR/dts/qcom/sdm845-beryllium.dtb"
+                  elif [ -f "$BIN_DIR/dts/sdm845-beryllium.dtb" ]; then
+                      DTB_PATH="$BIN_DIR/dts/sdm845-beryllium.dtb"
+                  fi
+                  
+                  if [ -n "$DTB_PATH" ]; then
+                      cat $BIN_DIR/Image.gz $DTB_PATH > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
+                  else
+                      cp $BIN_DIR/Image.gz $GITHUB_WORKSPACE/kernel_binaries/Image.gz
+                  fi
+              fi
+          else
+              echo "ERROR: Biner kernel tidak ditemukan!"
+              exit 1
+          fi
+          
+          if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
+              cp ../out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
+          elif [ -f "arch/arm64/boot/dtbo.img" ]; then
+              cp arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
+          elif [ -f "out/arch/arm64/boot/dtbo.img" ]; then
+              cp out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
+          fi
+
+    - name: Upload Biner Mentah Kernel
+      uses: actions/upload-artifact@v4
+      with:
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
+        path: kernel_binaries/*
