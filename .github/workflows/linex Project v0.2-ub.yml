@@ -1,6 +1,6 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.4 Dynamic Engine - Anti-VDSO Assembly Error & Secured Clang Path
-name: branch 11
+# Version 3.6 Dynamic Engine - Force Symlink Clang & Fixed vDSO Assembly
+name: Poco F1 branch 11
 
 on:
   workflow_dispatch:
@@ -71,7 +71,7 @@ on:
         required: true
         type: string
       kernelsu:
-        description: 'KernelSU (ksu/next/false)'
+        description: 'KernelSU Mode'
         default: 'ksu'
         required: true
         type: choice
@@ -100,7 +100,7 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build & Bersihkan Storage Bloatware
       run: |
-         echo "Building Poco F1 Kernel Version 3.4 Engine"
+         echo "Building Poco F1 Kernel Version 3.6 Engine"
          sudo timedatectl set-timezone Asia/Jakarta
          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
          sudo docker image prune --all --force
@@ -167,6 +167,12 @@ jobs:
              rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
          fi
          rm -rf $HOME/tmp-tc
+
+         # ===== FORCE OVERRIDE SYSTEM CLANG (KUNCIAN MATI) =====
+         echo "Force-linking downloaded Clang to system bins..."
+         sudo ln -sf $HOME/tc/bin/clang /usr/bin/clang
+         sudo ln -sf $HOME/tc/bin/clang /bin/clang
+         # ======================================================
 
     - name: Clone Kernel Source
       run: git clone --depth=1 ${{ inputs.kernel-url }} -b "${{ inputs.kernel-branch }}" kernel-dir
@@ -248,17 +254,29 @@ jobs:
          echo "CONFIG_MEMCG=y" >> "$TARGET_CONFIG"
          echo "CONFIG_MEMCG_SWAP=y" >> "$TARGET_CONFIG"
 
+         # ===== KSU AUTO-REPAIR ENGINE =====
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
+            echo "Installing Pure KernelSU..."
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
+            echo "Installing KernelSU-Next..."
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+         else
+            if [ ! -d "drivers/kernelsu" ]; then
+               mkdir -p drivers/kernelsu
+               touch drivers/kernelsu/Kconfig
+               echo 'obj-y += dummy.o' > drivers/kernelsu/Makefile
+               touch drivers/kernelsu/dummy.c
+            fi
          fi
 
-         # CLEANSED VDSO FIXED FOR CLANG MODERN (Dihapus trik sed lawas yang bikin konflik)
+         # FORCE DISABLE VDSO INTEGRATED AS ASSEMBLY IN COMPILER
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
              sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
              sed -i '/cc1as/d' $VDSO_MAKEFILE || true
+             # Paksa Makefile vDSO menggunakan compiler path yang murni
+             sed -i "s|CC\s*:=\s*|CC := $HOME/tc/bin/|g" $VDSO_MAKEFILE || true
          fi
 
          sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' "$TARGET_CONFIG" || true
@@ -267,8 +285,6 @@ jobs:
     - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
          cd kernel-dir
-         
-         # KUNCI MUTLAK PATH COMPILER DOWNLOAD DI BARIS PALING DEPAN
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:/usr/bin:/bin:$PATH
          
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
@@ -295,7 +311,7 @@ jobs:
              SAFE_CORES=1
          fi
          
-         # CETAK VERSI CLANG DI LOG BIAK KELIHATAN ASLINYA
+         # VERIFIKASI SEBELUM MASAK (Harus keluar output versi Clang Google asli)
          clang -v
          
          make -j$SAFE_CORES ARCH=arm64 O=../out \
