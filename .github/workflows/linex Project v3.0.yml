@@ -195,7 +195,7 @@ jobs:
 
     - name: Clone Kernel Source
       run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
-
+      
     - name: Pro Configuration Engine
       run: |
          cd kernel-dir
@@ -211,11 +211,12 @@ jobs:
          touch .scmversion
          export LOCALVERSION=""
          
-         # FIXED: Pembersihan total target file VR yang sering corrupt dari jalur kompilasi Qualcomm
-         echo "Mengamankan Makefile DTS dari komponen VR (QVR) yang rusak..."
+         # FIXED & SECURED: Potong target QVR & Interposer rusak di Versi 3.0
+         echo "Mengamankan Makefile DTS dari komponen VR (QVR) dan Interposer yang rusak..."
          sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/qvr-evt/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/qvr-dvt/d' arch/arm64/boot/dts/qcom/Makefile || true
+         sed -i '/sdm845-interposer/d' arch/arm64/boot/dts/qcom/Makefile || true
          
          echo "CONFIG_USB_CONFIGFS_F_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_USB_F_QDSS=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
@@ -304,7 +305,7 @@ jobs:
              exit 1
          fi
          
-    - name: Smart Packaging (SAFE EXTRACTION - FIXED PATH)
+   - name: Smart Packaging (SAFE EXTRACTION - FIXED PATH)
       run: |
           rm -f *.zip
           git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
@@ -312,17 +313,28 @@ jobs:
           
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           
-          # FIXED JALUR CAT DTB: Menyelaraskan struktur absolut direktori output '../out' secara akurat
+          # AMAN & AKURAT: Cek ketersediaan biner dari yang paling direkomendasikan untuk SDM845
           if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
+              echo "Menemukan Image.gz-dtb, menyalin ke AnyKernel3..."
               cp ../out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [ -f ../out/arch/arm64/boot/Image.gz ] && [ -f ../out/arch/arm64/boot/dts/sdm845-beryllium.dtb ]; then
-              cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
-          elif [ -f ../out/arch/arm64/boot/Image.gz ] && [ -f ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb ]; then
-              cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
           elif [ -f ../out/arch/arm64/boot/Image.gz ]; then
-              cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
-          else
+              echo "Menemukan Image.gz standar..."
+              if [ -f ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb ]; then
+                  echo "Menjahit Image.gz dengan sdm845-beryllium.dtb secara manual..."
+                  cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
+              elif [ -f ../out/arch/arm64/boot/dts/sdm845-beryllium.dtb ]; then
+                  echo "Menjahit Image.gz dengan sdm845-beryllium.dtb secara manual..."
+                  cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
+              else
+                  echo "DTB tidak ditemukan, menyalin Image.gz apa adanya..."
+                  cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+              fi
+          elif [ -f ../out/arch/arm64/boot/Image ]; then
+              echo "Menemukan biner Image mentah, menyalin ke AnyKernel3..."
               cp ../out/arch/arm64/boot/Image AnyKernel3/Image
+          else
+              echo "ERROR: Tidak ada berkas biner kernel yang valid di folder out!"
+              exit 1
           fi
           
           [ -f ../out/arch/arm64/boot/dtbo.img ] && cp ../out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
