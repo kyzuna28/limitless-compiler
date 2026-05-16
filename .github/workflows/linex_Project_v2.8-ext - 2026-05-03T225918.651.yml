@@ -244,13 +244,9 @@ jobs:
              USE_IAS=1
          fi
          
-         # Integrasi LLVM=1 secara penuh untuk memaksa Proton Clang mengunci driver USB
+         # Memperbaiki argumen tanpa LLVM=1 agar tidak merusak kompabilitas Makefile msm-4.9
          args="ARCH=arm64 O=../out \
               CC=clang \
-              LLVM=1 \
-              HOSTCC=gcc \
-              HOSTCXX=g++ \
-              HOSTLD=ld \
               AR=llvm-ar \
               NM=llvm-nm \
               OBJCOPY=llvm-objcopy \
@@ -262,8 +258,9 @@ jobs:
               CLANG_TRIPLE=aarch64-linux-gnu- \
               KCFLAGS=-Wno-error"
 
+         mkdir -p ../out
          make $args ${{ inputs.kernel-config }}
-         make -k -j$(nproc --all) $args 2>&1 | tee build.log
+         make -j$(nproc --all) $args Image.gz dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "ERROR: Kompilasi Gagal!"
@@ -273,6 +270,7 @@ jobs:
 
     - name: Smart Packaging (FIXED PATH OUTPUT)
       run: |
+          rm -f *.zip
           git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
           rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
           
@@ -285,7 +283,7 @@ jobs:
           zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" * -x .git README.md
 
     - name: Upload Final Build
-      uses: actions/with-artifact@v4
+      uses: actions/upload-artifact@v4
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-2.8"
         path: "*.zip"
