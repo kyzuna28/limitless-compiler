@@ -47,7 +47,7 @@ on:
         - sdclang
       aosp-clang-ver:
         description: 'Versi Clang (Hanya jika pakai aosp-clang)'
-        default: '11'
+        default: '12'
         required: true
         type: choice
         options:
@@ -260,26 +260,19 @@ jobs:
 
          echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
-    - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
+    - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE - FIXED IAS)
       run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
-         if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
-             if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
-                 USE_IAS=0
-             else
-                 USE_IAS=1
-             fi
-         elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
-             USE_IAS=0
-         else
-             USE_IAS=1
-         fi
+         # FORCE USE GCC ASSEMBLER (Mencegah LLVM IO Failure / Broken Pipe)
+         USE_IAS=0
          
-         mkdir -p ../out
+         # Bersihkan folder output dari sisa cache corrupt
+         rm -rf ../out && mkdir -p ../out
+         
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
          TOTAL_CORES=$(nproc --all)
@@ -290,7 +283,7 @@ jobs:
          fi
          echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
-         # FIXED: Tambah target Image.gz-dtb langsung di baris make utama demi keamanan
+         # KFLAGS dirapikan agar tidak memutus stream output Clang
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
               AR=llvm-ar \
@@ -302,12 +295,12 @@ jobs:
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
-              KCFLAGS="-w -Wno-error -Wl,--no-keep-memory -Wl,--reduce-memory-overheads" \
+              KCFLAGS="-w -Wno-error" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "ERROR: Kompilasi Gagal!"
-             tail -n 200 build.log
+             tail -n 300 build.log
              exit 1
          fi
          
