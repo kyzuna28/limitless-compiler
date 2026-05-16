@@ -26,7 +26,7 @@ on:
         type: string
       rom_type:
         description: 'Tipe ROM / Tag Cabang'
-        default: '𝚁𝚊𝚟𝚎𝚗'
+        default: '𝚁𝚊verify'
         required: true
         type: string
       project_name:
@@ -128,10 +128,11 @@ jobs:
     - name: Instalasi Paket Dependensi
       run: |
          sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libdata-dump-perl libtinfo-dev libncurses5-dev
          
          if [ -f /lib/x86_64-linux-gnu/libtinfo.so.6 ]; then
              sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5 || true
+             sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.6.0 || true
          else
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
@@ -282,7 +283,8 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu-"
 
-         make $args ${{ inputs.kernel-config }}
+         # Bypass defconfig check to avoid early dtc abort
+         make -i $args ${{ inputs.kernel-config }}
          make -k -j$(nproc --all) $args 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
