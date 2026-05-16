@@ -1,5 +1,5 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.0 Ultimate Stable - Perfect Dropdown & LTO/GPU Injection Fix
+# Version 3.0 Ultimate Stable - Perfect Dropdown, VDSO Fix & Me Symbol Branding
 name: Poco F1 Kernel Compiler 3.0
 on:
   workflow_dispatch:
@@ -20,13 +20,13 @@ on:
         required: true
         type: string
       kernel_name:
-        description: 'Nama Utama Kernel (Contoh: kyzuna)'
-        default: 'kyzuna'
+        description: 'Nama Utama Kernel'
+        default: '𝙺𝚢𝚣𝚞𝚗𝚊'
         required: true
         type: string
       rom_type:
-        description: 'Tipe ROM/Tag (nse / se / dynamic)'
-        default: 'nse'
+        description: 'Tipe ROM / Tag Cabang'
+        default: '𝚁𝚊𝚟𝚎𝚗'
         required: true
         type: string
       project_name:
@@ -36,7 +36,7 @@ on:
         type: string
       compiler:
         description: 'Pilih Compiler Pro'
-        default: 'weebx-clang'
+        default: 'aosp-clang'
         required: true
         type: choice
         options:
@@ -78,6 +78,7 @@ on:
         required: true
         type: choice
         options:
+        - main
         - ten
         - eleven
         - twelve
@@ -212,8 +213,8 @@ jobs:
              sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
          fi
          
-         # 2. Branding Localversion
-         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
+         # 2. Branding Localversion (Otomatis Mengubah Tanda Hubung '-' Menjadi Simbol '么' dengan Spasi Seimbang)
+         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }} 么 ${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
          
          # 3. Clean Versioning (No '+' or '-dirty')
          touch .scmversion
@@ -232,14 +233,14 @@ jobs:
              echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          fi
 
-         # 6. Injection Mesin Frekuensi GPU Custom (Overclock / Downclock) - FIXED SYNTAX
+         # 6. Injection Mesin Frekuensi GPU Custom (Overclock / Downclock)
          echo "Mengonfigurasi Frekuensi GPU..."
-         MIN_HZ=$((${ {inputs.gpu_min_clock }} * 1000000))
-         MAX_HZ=$((${{ inputs.gpu_max_clock }} * 1000000))
+         MIN_HZ=$(($} * 1000000))
+         MAX_HZ=$(($} * 1000000))
          TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
          if [ -f "$TARGET_DTSI" ]; then
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
-             sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MIN_HZ>;/g" $TARGET_DTSI || true
+             sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/g" $TARGET_DTSI || true
          else
              find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
          fi
@@ -249,6 +250,15 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+         fi
+
+         # 8. Fix VDSO Assembler Crash (Sapu Bersih Hardcoded Clang Assembler)
+         echo "Menjinakkan Makefile VDSO agar patuh pada GCC Assembler..."
+         VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
+         if [ -f "$VDSO_MAKEFILE" ]; then
+             sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
+             sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
+             sed -i '/cc1as/d' $VDSO_MAKEFILE || true
          fi
 
     - name: Proses Kompilasi Pro
