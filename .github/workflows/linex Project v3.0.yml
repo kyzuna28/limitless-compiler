@@ -1,5 +1,5 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.4 Pro Full Final - Ultimate Stability & Features
+# Version 3.0 Final Ultimate - Menu Choice Dropdown & Dynamic Compilation Link Fix
 name: Poco F1 Kernel Compiler 3.0
 on:
   workflow_dispatch:
@@ -118,7 +118,7 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build
       run: |
-         echo "Building Poco F1 Kernel Version 3.4 Pro"
+         echo "Building Poco F1 Kernel Version 3.0 Pro Ultimate"
          sudo timedatectl set-timezone Asia/Jakarta
 
     - name: Checkout Workflow
@@ -127,7 +127,7 @@ jobs:
     - name: ...Instalasi Paket Dependensi
       run: |
          sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libbio-perl libipc-cmd-perl
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libbio-perl libipc-cmd-perl libtinfo5
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
 
     - name: Optimasi Swap Space
@@ -226,8 +226,8 @@ jobs:
 
          # 6. Injection Mesin Frekuensi GPU Custom (Overclock / Downclock)
          echo "Mengonfigurasi Frekuensi GPU..."
-         MIN_HZ=$((${ inputs.gpu_min_clock }} * 1000000))
-         MAX_HZ=$((${ inputs.gpu_max_clock }} * 1000000))
+         MIN_HZ=$((${{ inputs.gpu_min_clock }} * 1000000))
+         MAX_HZ=$((${{ inputs.gpu_max_clock }} * 1000000))
          TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
          if [ -f "$TARGET_DTSI" ]; then
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
@@ -252,6 +252,15 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
+         # Proteksi Khusus Pipa Rusak (Broken Pipe) pada AOSP / SDClang
+         if [ "${{ inputs.compiler }}" = "aosp-clang" ] || [ "${{ inputs.compiler }}" = "sdclang" ]; then
+             echo "Menggunakan Standar AOSP/SDClang: Mematikan LLVM_IAS..."
+             USE_IAS=0
+         else
+             echo "Menggunakan Custom Clang Pro: Mengaktifkan LLVM_IAS..."
+             USE_IAS=1
+         fi
+         
          args="ARCH=arm64 O=../out \
               CC=clang \
               HOSTCC=gcc \
@@ -262,7 +271,7 @@ jobs:
               OBJCOPY=llvm-objcopy \
               OBJDUMP=llvm-objdump \
               STRIP=aarch64-linux-android-strip \
-              LLVM_IAS=1 \
+              LLVM_IAS=$USE_IAS \
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu-"
@@ -303,5 +312,5 @@ jobs:
     - name: Upload Final Build
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-3.4"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-3.0"
         path: "*.zip"
