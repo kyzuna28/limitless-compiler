@@ -36,13 +36,14 @@ on:
         type: string
       compiler:
         description: 'Pilih Compiler Pro'
-        default: 'aosp-clang'
+        default: 'weebx-clang'
         required: true
         type: choice
         options:
         - aosp-clang
         - proton-clang
-        - eva-clang
+        - weebx-clang
+        - zycromer-clang
         - zyc-clang
         - sdclang
       aosp-clang-ver:
@@ -170,11 +171,15 @@ jobs:
              echo "Cloning Proton Clang..."
              git clone --depth=1 https://github.com/kdrag0n/proton-clang.git $HOME/tc
              
-         elif [ "${{ inputs.compiler }}" = "eva-clang" ]; then
-             echo "Downloading Official Eva Clang from Active Public Mirror..."
-             # Mengunduh paket tarball Eva Clang langsung dari GitLab agar bebas dari error login git clone
-             aria2c -q -o eva.tar.gz "https://gitlab.com/CannedKitten/vortex_clang/-/archive/master/vortex_clang-master.tar.gz"
-             tar -C $HOME/tc --strip-components=1 -zxf eva.tar.gz && rm eva.tar.gz
+         elif [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
+             echo "Downloading Official WeebX (Yuki) Clang Tarball..."
+             aria2c -q -o weebx.tar.gz "https://github.com/Klozz/Yuki-clang/archive/refs/heads/master.tar.gz"
+             tar -C $HOME/tc --strip-components=1 -zxf weebx.tar.gz && rm weebx.tar.gz
+
+         elif [ "${{ inputs.compiler }}" = "zycromer-clang" ]; then
+             echo "Downloading Verified ZyCromerZ Clang Stable Build..."
+             aria2c -q -o zycromer.tar.gz "https://github.com/ZyCromerZ/Clang/releases/download/Clang-16.0.6-20260510-release/Clang-16.0.6-20260510-release.tar.gz"
+             tar -C $HOME/tc --strip-components=1 -zxf zycromer.tar.gz && rm zycromer.tar.gz
 
          elif [ "${{ inputs.compiler }}" = "zyc-clang" ]; then
              echo "Downloading ZycClang..."
