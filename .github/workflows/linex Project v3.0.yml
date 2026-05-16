@@ -1,12 +1,12 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.1 Pro Full Final - Ultimate Stability & Features
-name: Poco F1 Kernel Silvercore Compiler 3.0
+# Version 3.4 Pro Full Final - Ultimate Stability & Features
+name: Poco F1 Kernel Compiler 3.4
 on:
   workflow_dispatch:
     inputs:
       ubuntu:
-        description: 'Run on (Rekomendasi: ubuntu-22.04 atau ubuntu-latest)'
-        default: 'ubuntu-22.04'
+        description: 'Run on'
+        default: 'ubuntu-latest'
         required: true
         type: string
       zip_name:
@@ -28,13 +28,7 @@ on:
         description: 'Tipe ROM/Tag (nse / se / dynamic)'
         default: 'nse'
         required: true
-        type: choice
-        options:
-        - nse
-        - se
-        - dynamic
-        - gki
-        - qgki
+        type: string
       project_name:
         description: 'Build Project (@nama-project)'
         default: 'kyy'
@@ -48,16 +42,15 @@ on:
         options:
         - aosp-clang
         - proton-clang
-        - azure-clang
+        - eva-clang
+        - zyc-clang
+        - sdclang
       aosp-clang-ver:
-        description: 'Versi Clang (Hanya berlaku untuk opsi aosp-clang)'
+        description: 'Versi Clang (Hanya jika pakai aosp-clang)'
         default: '11'
         required: true
         type: choice
         options:
-        - '8'
-        - '9'
-        - '10'
         - '11'
         - '12'
         - '13'
@@ -115,16 +108,16 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build
       run: |
-         echo "Building Poco F1 Kernel Version 3.1 Pro"
+         echo "Building Poco F1 Kernel Version 3.4 Pro"
          sudo timedatectl set-timezone Asia/Jakarta
 
     - name: Checkout Workflow
       uses: actions/checkout@v4
 
-    - name: Instalasi Paket Dependensi
+    - name: ...Instalasi Paket Dependensi
       run: |
          sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
 
     - name: Optimasi Swap Space
@@ -150,12 +143,9 @@ jobs:
          aria2c -q -o gcc-32.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz"
          tar -C $HOME/gcc-32 -zxf gcc-32.tar.gz && rm gcc-32.tar.gz
          
-         # Logic Pemilihan Compiler dan Versi Clang 8 s/d 15+
+         # Logika Download Compiler Berdasarkan Pilihan Menu
          if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
              case "${{ inputs.aosp-clang-ver }}" in
-                 8) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-9.0.0_r61/clang-4691093.tar.gz" ;;
-                 9) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-10.0.0_r47/clang-r353946b.tar.gz" ;;
-                 10) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r25/clang-r377782b.tar.gz" ;;
                  11) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz" ;;
                  12) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-12.1.0_r27/clang-r416183b1.tar.gz" ;;
                  13) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-13.0.0_r30/clang-r450784d.tar.gz" ;;
@@ -169,10 +159,24 @@ jobs:
          elif [ "${{ inputs.compiler }}" = "proton-clang" ]; then
              echo "Cloning Proton Clang..."
              git clone --depth=1 https://github.com/kdrag0n/proton-clang.git $HOME/tc
-         
-         elif [ "${{ inputs.compiler }}" = "azure-clang" ]; then
-             echo "Downloading Azure Clang..."
-             git clone --depth=1 https://gitlab.com/Panchajanya1999/azure-clang.git $HOME/tc
+             
+         elif [ "${{ inputs.compiler }}" = "eva-clang" ]; then
+             echo "Cloning Eva Clang..."
+             git clone --depth=1 https://github.com/mvaisakh/gcc-arm64.git -b gcc-master $HOME/gcc-64_eva
+             git clone --depth=1 https://github.com/mvaisakh/gcc-arm.git -b gcc-master $HOME/gcc-32_eva
+             git clone --depth=1 https://gitlab.com/mvaisakh/clang-build.git $HOME/tc
+             rm -rf $HOME/gcc-64 $HOME/gcc-32
+             mv $HOME/gcc-64_eva $HOME/gcc-64
+             mv $HOME/gcc-32_eva $HOME/gcc-32
+
+         elif [ "${{ inputs.compiler }}" = "zyc-clang" ]; then
+             echo "Downloading ZycClang..."
+             aria2c -q -o zyc.tar.gz "https://raw.githubusercontent.com/zyandatanzil/Clang-Write/main/zyc-clang/zyc-clang-r485501b.tar.gz" || aria2c -q -o zyc.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r15/clang-r487747c.tar.gz"
+             tar -C $HOME/tc -zxf zyc.tar.gz && rm zyc.tar.gz
+
+         elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
+             echo "Cloning Snapdragon LLVM Compiler (SDClang)..."
+             git clone --depth=1 https://github.com/WeeAris/SDClang.git $HOME/tc
          fi
 
     - name: Clone Kernel Source
@@ -226,7 +230,7 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
-         # Penambahan HOSTLD, HOSTCC, HOSTCXX untuk menghindari konflik relr.dyn glibc Ubuntu
+         # Menggunakan kombinasi bendera aman agar kompatibel di Ubuntu Modern & Custom Clang
          args="ARCH=arm64 O=../out \
               CC=clang \
               HOSTCC=gcc \
@@ -237,6 +241,7 @@ jobs:
               OBJCOPY=llvm-objcopy \
               OBJDUMP=llvm-objdump \
               STRIP=llvm-strip \
+              LLVM_IAS=1 \
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu-"
@@ -247,7 +252,7 @@ jobs:
          echo "Memulai kompilasi kernel (Log dialihkan ke build.log)..."
          make -k -j$(nproc --all) $args 2>&1 | tee build.log
          
-         # Cek hasil akhir kompilasi
+         # Cek hasil akhir kompilasi sebelum dikemas
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "===================================================="
              echo "         !!! PROSES KOMPILASI GAGAL !!!             "
@@ -277,5 +282,5 @@ jobs:
     - name: Upload Final Build
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-3.1"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-3.4"
         path: "*.zip"
