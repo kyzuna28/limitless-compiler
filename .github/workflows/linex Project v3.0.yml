@@ -261,19 +261,26 @@ jobs:
 
          echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
-    - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE - FIXED IAS)
+    - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
-         # FORCE USE GCC ASSEMBLER (Mencegah LLVM IO Failure / Broken Pipe)
-         USE_IAS=0
+         # AUTO-SELECT DETECTOR ENGINE: Memilih Assembler Berdasarkan Pilihan UI GitHub
+         SELECTED_COMPILER="${{ inputs.compiler }}"
+         echo "Compiler yang dipilih di UI: $SELECTED_COMPILER"
          
-         # Bersihkan folder output dari sisa cache corrupt
+         if [ "$SELECTED_COMPILER" = "weebx-clang" ] || [ "$SELECTED_COMPILER" = "proton-clang" ]; then
+             echo "Memicu Integrated Assembler (LLVM_IAS=1) untuk compiler modern..."
+             USE_IAS=1
+         else
+             echo "Memicu GCC External Assembler (LLVM_IAS=0) untuk mencegah Broken Pipe..."
+             USE_IAS=0
+         fi
+         
          rm -rf ../out && mkdir -p ../out
-         
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
          TOTAL_CORES=$(nproc --all)
@@ -284,7 +291,6 @@ jobs:
          fi
          echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
-         # KFLAGS dirapikan agar tidak memutus stream output Clang
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
               AR=llvm-ar \
@@ -296,7 +302,7 @@ jobs:
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
-              KCFLAGS="-w -Wno-error" \
+              KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
