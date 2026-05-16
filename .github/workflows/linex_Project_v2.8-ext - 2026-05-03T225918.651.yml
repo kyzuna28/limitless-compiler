@@ -325,14 +325,15 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-         echo "Menjinakkan Makefile VDSO secara adaptif..."
+             echo "Menjinakkan Makefile VDSO secara adaptif untuk ZyCromer & SDClang..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
-             if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ] || [ "${{ inputs.compiler }}" = "sdclang" ]; then
-                 sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
-                 sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
-                 sed -i '/cc1as/d' $VDSO_MAKEFILE || true
-             fi
+             # Amputasi total semua flag assembler ganda yang bikin crash
+             sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
+             sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
+             sed -i 's/CC_FLAGS_VDSO .=\s*-integrated-as//g' $VDSO_MAKEFILE || true
+             sed -i '/cc1as/d' $VDSO_MAKEFILE || true
+             sed -i 's/$(CC) $(ccflags-y)/$(CC) -no-integrated-as $(ccflags-y)/g' $VDSO_MAKEFILE || true
          fi
 
          sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
@@ -352,6 +353,9 @@ jobs:
          if [ "$SELECTED_COMPILER" = "weebx-clang" ] || [ "$SELECTED_COMPILER" = "proton-clang" ]; then
              echo "Memicu Integrated Assembler (LLVM_IAS=1) untuk compiler modern..."
              USE_IAS=1
+         elif [ "$SELECTED_COMPILER" = "sdclang" ] || [ "$SELECTED_COMPILER" = "zycromer-clang" ] || [ "$SELECTED_COMPILER" = "zycromer" ]; then
+             echo "MEMAKSA GCC EXTERNAL ASSEMBLER (LLVM_IAS=0) UNTUK BYPASS VDSO JUNK LINES..."
+             USE_IAS=0
          else
              echo "Memicu GCC External Assembler (LLVM_IAS=0) untuk mencegah Broken Pipe..."
              USE_IAS=0
