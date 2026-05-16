@@ -36,7 +36,7 @@ on:
         type: string
       compiler:
         description: 'Pilih Compiler Pro'
-        default: 'proton-clang'
+        default: 'aosp-clang'
         required: true
         type: choice
         options:
@@ -194,7 +194,6 @@ jobs:
              sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
          fi
          
-         # TARGET_CONFIG diubah ke sdm845-perf_defconfig agar pas dengan isi source LineageOS
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\" ${{ inputs.kernel_name }} 么 ${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
@@ -202,7 +201,7 @@ jobs:
          touch .scmversion
          export LOCALVERSION=""
          
-         # 1. AMPUTASI AUDIO ELLIPTIC LANGSUNG DARI SAKELAR INTERNAL TECHPACK AUDIO LINEAGEOS
+         # 1. FIXED AUDIO TECHPACK (AMPUTASI JALUR BERMASALAH)
          echo "Mematikan driver Elliptic Ultrasound Techpack..."
          sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' $TARGET_CONFIG || true
          echo "CONFIG_AUDIO_ELLIPTIC=n" >> $TARGET_CONFIG
@@ -210,7 +209,7 @@ jobs:
              sed -i '/elliptic/d' techpack/audio/asoc/Makefile || true
          fi
          
-         # 2. SUNTIK MATI EFI STUB SECARA BRUTAL AGAR LINKER VMLINUX LOLOS
+         # 2. FIXED EFI STUB LINKER ERROR
          echo "Menonaktifkan EFI dan EFI_STUB dari file defconfig..."
          sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_EFI_STUB=y/CONFIG_EFI_STUB=n/g' $TARGET_CONFIG || true
@@ -220,7 +219,13 @@ jobs:
              sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
          fi
 
-         # 3. CLEANSING RANJAU DTS QUALCOMM
+         # 3. FIX TOTAL SECTION MISMATCH WARNINGS (ESTETIKA LOG BERSIH)
+         echo "Membungkam peringatan Section Mismatch modpost..."
+         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $TARGET_CONFIG
+         echo "CONFIG_DEBUG_SECTION_MISMATCH=n" >> $TARGET_CONFIG
+         sed -i 's/CONFIG_DEBUG_SECTION_MISMATCH=y/CONFIG_DEBUG_SECTION_MISMATCH=n/g' $TARGET_CONFIG || true
+
+         # 4. CLEANSING RANJAU DTS QUALCOMM
          echo "Membersihkan target file VR (QVR) dan interposer rusak..."
          sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/qvr-evt/d' arch/arm64/boot/dts/qcom/Makefile || true
@@ -278,8 +283,17 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
-         # FORCE USE GCC ASSEMBLER (Pelindung dari eror patah pipe / linker gila)
-         USE_IAS=0
+         # AUTO-SELECT DETECTOR ENGINE: Menentukan nilai IAS dari drop-down UI GitHub
+         SELECTED_COMPILER="${{ inputs.compiler }}"
+         echo "Compiler yang dipilih di UI: $SELECTED_COMPILER"
+         
+         if [ "$SELECTED_COMPILER" = "weebx-clang" ] || [ "$SELECTED_COMPILER" = "proton-clang" ]; then
+             echo "Memicu Integrated Assembler (LLVM_IAS=1) untuk compiler modern..."
+             USE_IAS=1
+         else
+             echo "Memicu GCC External Assembler (LLVM_IAS=0) untuk mencegah Broken Pipe..."
+             USE_IAS=0
+         fi
          
          rm -rf ../out && mkdir -p ../out
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
@@ -292,7 +306,6 @@ jobs:
          fi
          echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
-         # Ditambahkan -fno-builtin agar masalah EFI stub string teratasi total
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
               AR=llvm-ar \
@@ -307,14 +320,13 @@ jobs:
               KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
-         # FIXED: Menambahkan penutup 'fi' agar skrip tidak patah di tengah jalan
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "ERROR: Kompilasi Gagal!"
              tail -n 300 build.log
              exit 1
          fi
          
-    - name: Smart Packaging (SAFE EXTRACTION - FIXED PATH)
+    - name: Smart Packaging (SAFE EXTRACTION - MULTI PATH DETECTOR)
       run: |
           rm -f *.zip
           git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
@@ -322,31 +334,49 @@ jobs:
           
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           
-          # AMAN & AKURAT: Cek ketersediaan biner dari yang paling direkomendasikan untuk SDM845
-          if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
-              echo "Menemukan Image.gz-dtb, menyalin ke AnyKernel3..."
-              cp ../out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [ -f ../out/arch/arm64/boot/Image.gz ]; then
-              echo "Menemukan Image.gz standar..."
-              if [ -f ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb ]; then
-                  echo "Menjahit Image.gz dengan sdm845-beryllium.dtb secara manual..."
-                  cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
-              elif [ -f ../out/arch/arm64/boot/dts/sdm845-beryllium.dtb ]; then
-                  echo "Menjahit Image.gz dengan sdm845-beryllium.dtb secara manual..."
-                  cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
-              else
-                  echo "DTB tidak ditemukan, menyalin Image.gz apa adanya..."
-                  cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+          # Tentukan variabel jalur pencarian (Lokasi Luar, Lokasi Internal, Lokasi Sub-Out)
+          BIN_DIR=""
+          if [ -f "../out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "../out/arch/arm64/boot/Image.gz" ]; then
+              BIN_DIR="../out/arch/arm64/boot"
+              echo "Biner ditemukan di Jalur Luar (../out)"
+          elif [ -f "arch/arm64/boot/Image.gz-dtb" ] || [ -f "arch/arm64/boot/Image.gz" ]; then
+              BIN_DIR="arch/arm64/boot"
+              echo "Biner ditemukan di Jalur Internal (kernel-dir/arch)"
+          elif [ -f "out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "out/arch/arm64/boot/Image.gz" ]; then
+              BIN_DIR="out/arch/arm64/boot"
+              echo "Biner ditemukan di Jalur Sub-Out (kernel-dir/out)"
+          fi
+
+          # Eksekusi Penyalinan berdasarkan jalur yang valid
+          if [ -n "$BIN_DIR" ]; then
+              if [ -f "$BIN_DIR/Image.gz-dtb" ]; then
+                  echo "Menyalin Image.gz-dtb ke AnyKernel3..."
+                  cp $BIN_DIR/Image.gz-dtb AnyKernel3/Image.gz-dtb
+              elif [ -f "$BIN_DIR/Image.gz" ]; then
+                  echo "Menyalin Image.gz standar..."
+                  if [ -f "$BIN_DIR/dts/qcom/sdm845-beryllium.dtb" ]; then
+                      cat $BIN_DIR/Image.gz $BIN_DIR/dts/qcom/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
+                  elif [ -f "$BIN_DIR/dts/sdm845-beryllium.dtb" ]; then
+                      cat $BIN_DIR/Image.gz $BIN_DIR/dts/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
+                  else
+                      cp $BIN_DIR/Image.gz AnyKernel3/Image.gz
+                  fi
+              elif [ -f "$BIN_DIR/Image" ]; then
+                  cp $BIN_DIR/Image AnyKernel3/Image
               fi
-          elif [ -f ../out/arch/arm64/boot/Image ]; then
-              echo "Menemukan biner Image mentah, menyalin ke AnyKernel3..."
-              cp ../out/arch/arm64/boot/Image AnyKernel3/Image
           else
-              echo "ERROR: Tidak ada berkas biner kernel yang valid di folder out!"
+              echo "ERROR: Biner kernel benar-benar gaib! Tidak ditemukan di jalur manapun."
               exit 1
           fi
           
-          [ -f ../out/arch/arm64/boot/dtbo.img ] && cp ../out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
+          # Cari DTBO secara fleksibel
+          if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
+              cp ../out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
+          elif [ -f "arch/arm64/boot/dtbo.img" ]; then
+              cp arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
+          elif [ -f "out/arch/arm64/boot/dtbo.img" ]; then
+              cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
+          fi
           
           cd AnyKernel3
           zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" * -x .git README.md
