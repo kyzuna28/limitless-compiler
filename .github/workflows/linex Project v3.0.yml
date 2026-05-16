@@ -1,6 +1,6 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.0 / 2.8 Ultimate Hyper Fix - Core Target Isolation
-name: Poco F1 Kernel Compiler Pro
+# Version 3.0 Ultimate Hyper Fix - Core Target Isolation (Sempurna)
+name: Poco F1 Kernel Compiler Pro 3.0
 on:
   workflow_dispatch:
     inputs:
@@ -171,56 +171,45 @@ jobs:
       run: |
          cd kernel-dir
          
-         # 1. Logika Versi Kernel (Makefile)
          if [ "${{ inputs.kernel_version }}" != "original" ] && [ "${{ inputs.kernel_version }}" != "" ]; then
              sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
              sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
              sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
          fi
          
-         # 2. Branding Localversion
          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }} 么 ${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
          
          touch .scmversion
          export LOCALVERSION=""
          
-         # FORCE ISOLATION: Kita paksa Makefile Qualcomm DTB HANYA memproses beryllium, buang sisanya!
-         echo "Melakukan Isolasi Target DTB: Memaksa fokus hanya pada Poco F1..."
+         # FIXED ISOLATION ENGINE: Isolasi .dts utama Poco F1, tapi amankan file komponen .dtsi
+         echo "Melakukan Isolasi Target DTB Sempurna..."
          cd arch/arm64/boot/dts/qcom/
          mkdir -p temp_dtb
-         # Selamatkan file dts bawaan poco f1 dan sdm845 dasar
          [ -f sdm845-beryllium.dts ] && mv sdm845-beryllium.dts temp_dtb/ || true
-         [ -f sdm845.dtsi ] && mv sdm845.dtsi temp_dtb/ || true
-         [ -f sdm845-gpu.dtsi ] && mv sdm845-gpu.dtsi temp_dtb/ || true
-         [ -f sdm845-qusb-phy.dtsi ] && mv sdm845-qusb-phy.dtsi temp_dtb/ || true
          find . -maxdepth 1 -type f -name "*.dts" -delete || true
-         find . -maxdepth 1 -type f -name "*.dtsi" -delete || true
          mv temp_dtb/* . && rm -rf temp_dtb
          
-         # Tulis ulang Makefile DTS Qualcomm khusus untuk beryllium saja
+         # Tulis ulang instruksi kompilasi DTB khusus untuk Poco F1
          echo 'dtb-$(CONFIG_ARCH_SDM845) += sdm845-beryllium.dtb' > Makefile
          echo 'always-y        := $(dtb-y)' >> Makefile
          echo 'clean-files     := *.dtb' >> Makefile
          cd ../../../../../
          
-         # Intervensi Ekstra: Menjinakkan Defconfig USB Gadget yang corrupt
          echo "CONFIG_USB_CONFIGFS_F_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_USB_F_QDSS=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # 4. APatch Support Fix
          echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # 5. Disable LTO Logic
          if [ "${{ inputs.disable-lto }}" = "true" ]; then
              sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
              sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
              echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          fi
 
-         # 6. Smart GPU Clock Engine
          echo "Mengonfigurasi Frekuensi GPU..."
          MIN_HZ=$(($(echo ${{ inputs.gpu_min_clock }}) * 1000000))
          MAX_HZ=$(($(echo ${{ inputs.gpu_max_clock }}) * 1000000))
@@ -230,14 +219,12 @@ jobs:
              sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MIN_HZ>;/g" $TARGET_DTSI || true
          fi
          
-         # 7. KernelSU / KernelSU-Next
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-         # 8. Fix VDSO Assembler Crash
          echo "Menjinakkan Makefile VDSO secara adaptif..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
@@ -248,14 +235,12 @@ jobs:
              fi
          fi
 
-         # 9. Fix LLVM Objcopy LKDTM Conflict
          echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
 
     - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
-         
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
@@ -280,9 +265,7 @@ jobs:
          else
              SAFE_CORES=1
          fi
-         echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan RAM VM..."
          
-         # TARGET DIUBAH MENJADI 'Image.gz-dtb dtbs' AGAR PRODUKSI BINER LANGSUNG JADI SATU
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
               AR=llvm-ar \
@@ -311,13 +294,11 @@ jobs:
           
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           
-          # SISTEM COPY PINTAR: Cek semua variasi output biner secara hierarkis
           if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
               cp ../out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
           elif [ -f ../out/arch/arm64/boot/Image.gz ]; then
               cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
           elif [ -f ../out/arch/arm64/boot/Image ]; then
-              # Jika yang keluar file Image mentah, kita pakai kompresi gzip manual
               gzip -c ../out/arch/arm64/boot/Image > AnyKernel3/Image.gz
           else
               echo "ERROR: Berkas biner kernel benar-benar tidak tercipta karena build gagal di atas!"
