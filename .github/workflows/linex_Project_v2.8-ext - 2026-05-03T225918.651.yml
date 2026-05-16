@@ -91,11 +91,15 @@ on:
         - ksu
         - next
         - "false"
-      disable-lto:
-        description: 'Disable LTO (true / false)'
-        default: 'true'
+      lto_type:
+        description: 'Pilih Mode LTO (Link Time Optimization)'
+        default: 'disable'
         required: true
-        type: string
+        type: choice
+        options:
+        - disable
+        - enable
+        - thinlto
       AK3:
         description: 'AnyKernel3 Template URL'
         default: 'https://github.com/osm0sis/AnyKernel3'
@@ -240,9 +244,27 @@ jobs:
          echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
          echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
          
-         if [ "${{ inputs.disable-lto }}" = "true" ]; then
-             sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' $TARGET_CONFIG || true
-             sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' $TARGET_CONFIG || true
+         # 5. AUTO-SELECT LTO ENGINE (DISABLE / ENABLE / THINLTO)
+         SELECTED_LTO="${{ inputs.lto_type }}"
+         echo "Mode LTO yang dipilih di UI: $SELECTED_LTO"
+         
+         # Bersihkan dulu sisa config LTO bawaan agar tidak bentrok
+         sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_LTO_NONE=.*/# CONFIG_LTO_NONE is not set/g' $TARGET_CONFIG || true
+
+         if [ "$SELECTED_LTO" = "enable" ]; then
+             echo "Mengaktifkan Full LTO Clang..."
+             echo "CONFIG_LTO=y" >> $TARGET_CONFIG
+             echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
+         elif [ "$SELECTED_LTO" = "thinlto" ]; then
+             echo "Mengaktifkan ThinLTO Clang..."
+             echo "CONFIG_LTO=y" >> $TARGET_CONFIG
+             echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
+             echo "CONFIG_THINLTO=y" >> $TARGET_CONFIG
+         else
+             echo "Menonaktifkan LTO (LTO None)..."
              echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
 
@@ -254,7 +276,7 @@ jobs:
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
              sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/g" $TARGET_DTSI || true
          else
-             find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
+             find arch/arm64/boot/dts/ digest -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
          fi
          
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
