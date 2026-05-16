@@ -199,11 +199,12 @@ jobs:
          touch .scmversion
          export LOCALVERSION=""
          
-         # AGGRESSIVE CLEAN-UP: Potong seluruh target QVR rusak dari Makefile DTS Qualcomm
-         echo "Membersihkan seluruh target file VR (QVR) yang rusak dari antrean build..."
+         # AGGRESSIVE CLEAN-UP: Potong target QVR rusak & Interposer SDM670 yang bikin patah pipe
+         echo "Membersihkan target file VR (QVR) dan interposer yang rusak dari antrean build..."
          sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/qvr-evt/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/qvr-dvt/d' arch/arm64/boot/dts/qcom/Makefile || true
+         sed -i '/sdm845-interposer/d' arch/arm64/boot/dts/qcom/Makefile || true
          
          echo "CONFIG_USB_CONFIGFS_F_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_USB_F_QDSS=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
