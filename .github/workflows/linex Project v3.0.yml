@@ -205,12 +205,15 @@ jobs:
          touch .scmversion
          export LOCALVERSION=""
          
-         # 1. FIXED AUDIO TECHPACK (AMPUTASI JALUR BERMASALAH)
-         echo "Mematikan driver Elliptic Ultrasound Techpack..."
+         # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
+         echo "Menjinakkan driver Elliptic Ultrasound Techpack..."
          sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' $TARGET_CONFIG || true
          echo "CONFIG_AUDIO_ELLIPTIC=n" >> $TARGET_CONFIG
+         
+         # Metode bypass aman: mengubah deklarasi objek di Makefile tanpa menghapus struktur barisnya
          if [ -f techpack/audio/asoc/Makefile ]; then
-             sed -i '/elliptic/d' techpack/audio/asoc/Makefile || true
+             sed -i 's/obj-\$(CONFIG_AUDIO_ELLIPTIC).*=.*/# Elliptic disabled/g' techpack/audio/asoc/Makefile || true
+             sed -i 's/snd-soc-qdsp6v2-objs-back.*=.*/# Elliptic back disabled/g' techpack/audio/asoc/Makefile || true
          fi
          
          # 2. FIXED EFI STUB LINKER ERROR
