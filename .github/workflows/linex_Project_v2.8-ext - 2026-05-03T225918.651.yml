@@ -1,5 +1,5 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.7 Pro Full Ultimate - Fix Clang Mirrors & GPU Clock Engine
+# Version 2.8 Final Ultimate - Fix Linker Collision & AOSP Clang Broken Pipe
 name: Poco F1 Kernel Compiler 2.8
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ on:
         type: string
       zip_name:
         description: 'Nama File ZIP Akhir'
-        default: 'Silvercore-Beryllium'
+        default: 'Beryllium'
         required: true
         type: string
       kernel_version:
@@ -91,7 +91,7 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build
       run: |
-         echo "Building Poco F1 Kernel Version 3.7 Pro Ultimate"
+         echo "Building Poco F1 Kernel Version 2.8 Pro Ultimate"
          sudo timedatectl set-timezone Asia/Jakarta
 
     - name: Checkout Workflow
@@ -100,7 +100,7 @@ jobs:
     - name: Instalasi Paket Dependensi
       run: |
          sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libbio-perl libipc-cmd-perl libtinfo5
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
 
     - name: Optimasi Swap Space
@@ -140,19 +140,22 @@ jobs:
              tar -C $HOME/tc -zxf tc.tar.gz && rm tc.tar.gz
          
          elif [ "${{ inputs.compiler }}" = "proton-clang" ]; then
-             echo "Downloading Proton Clang Master Tarball..."
+             echo "Downloading Proton Clang..."
              aria2c -q -o proton.tar.gz "https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
              tar -C $HOME/tc --strip-components=1 -zxf proton.tar.gz && rm proton.tar.gz
-             
+             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
+
          elif [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
              echo "Downloading Official WeebX (Yuki) Clang Tarball..."
              aria2c -q -o weebx.tar.gz "https://github.com/Klozz/Yuki-clang/archive/refs/heads/master.tar.gz"
              tar -C $HOME/tc --strip-components=1 -zxf weebx.tar.gz && rm weebx.tar.gz
+             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
 
          elif [ "${{ inputs.compiler }}" = "zycromer-clang" ]; then
              echo "Downloading Verified ZyCromerZ Clang Stable Build..."
              aria2c -q -o zycromer.tar.gz "https://github.com/ZyCromerZ/Clang/releases/download/Clang-16.0.6-20260510-release/Clang-16.0.6-20260510-release.tar.gz"
              tar -C $HOME/tc --strip-components=1 -zxf zycromer.tar.gz && rm zycromer.tar.gz
+             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
 
          elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
              echo "Cloning Snapdragon LLVM Compiler (SDClang)..."
@@ -202,9 +205,7 @@ jobs:
          if [ -f "$TARGET_DTSI" ]; then
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
              sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MIN_HZ>;/g" $TARGET_DTSI || true
-             echo "Berhasil mengubah DTSI tabel GPU ke: ${{ inputs.gpu_min_clock }}Mhz - ${{ inputs.gpu_max_clock }}Mhz"
          else
-             echo "DTSI utama tidak ketemu, injeksi frekuensi global diaktifkan..."
              find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
          fi
          
@@ -224,17 +225,26 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
+         # Proteksi Khusus Pipa Rusak (Broken Pipe) pada AOSP / SDClang
+         if [ "${{ inputs.compiler }}" = "aosp-clang" ] || [ "${{ inputs.compiler }}" = "sdclang" ]; then
+             echo "Menggunakan Standar AOSP/SDClang: Mematikan LLVM_IAS..."
+             USE_IAS=0
+         else
+             echo "Menggunakan Custom Clang Pro: Mengaktifkan LLVM_IAS..."
+             USE_IAS=1
+         fi
+         
          args="ARCH=arm64 O=../out \
               CC=clang \
               HOSTCC=gcc \
               HOSTCXX=g++ \
-              HOSTLD=/usr/bin/ld \
+              HOSTLD=ld \
               AR=llvm-ar \
               NM=llvm-nm \
               OBJCOPY=llvm-objcopy \
               OBJDUMP=llvm-objdump \
-              STRIP=llvm-strip \
-              LLVM_IAS=1 \
+              STRIP=aarch64-linux-android-strip \
+              LLVM_IAS=$USE_IAS \
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu-"
@@ -275,5 +285,5 @@ jobs:
     - name: Upload Final Build
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-3.7"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-2.8"
         path: "*.zip"
