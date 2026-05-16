@@ -26,7 +26,7 @@ on:
         type: string
       rom_type:
         description: 'Tipe ROM / Tag Cabang'
-        default: '𝚁𝚊𝚟𝚎𝚗'
+        default: '𝚁𝚊𝚟𝚎𝚗-𝙶𝚔𝚒'
         required: true
         type: string
       project_name:
@@ -151,10 +151,10 @@ jobs:
              sudo swapon $SWAP_FILE
          fi
 
-    - name: Download Toolchains (Hybrid Setup)
+    - name: Download Toolchains (Hybrid Setup - STABLE)
       run: |
-         rm -rf $HOME/tc $HOME/gcc-64 $HOME/gcc-32
-         mkdir -p $HOME/tc $HOME/gcc-64 $HOME/gcc-32
+         rm -rf $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
+         mkdir -p $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
          
          aria2c -q -o gcc-64.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz"
          tar -C $HOME/gcc-64 -zxf gcc-64.tar.gz && rm gcc-64.tar.gz
@@ -173,24 +173,24 @@ jobs:
              aria2c -q -o tc.tar.gz "$URL"
              tar -C $HOME/tc -zxf tc.tar.gz && rm tc.tar.gz
          
-         elif [ "${{ inputs.compiler }}" = "proton-clang" ]; then
-             aria2c -q -o proton.tar.gz "https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
-             tar -C $HOME/tc --strip-components=1 -zxf proton.tar.gz && rm proton.tar.gz
-             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
+         elif [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
+             if [ "${{ inputs.compiler }}" = "proton-clang" ]; then
+                 URL="https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
+             else
+                 URL="https://github.com/Klozz/Yuki-clang/archive/refs/heads/master.tar.gz"
+             fi
+             aria2c -q -o toolchain.tar.gz "$URL"
+             tar -C $HOME/tmp-tc -zxf toolchain.tar.gz && rm toolchain.tar.gz
+             mv $HOME/tmp-tc/*/* $HOME/tc/ 2>/dev/null || mv $HOME/tmp-tc/* $HOME/tc/
              
-         elif [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
-             aria2c -q -o weebx.tar.gz "https://github.com/Klozz/Yuki-clang/archive/refs/heads/master.tar.gz"
-             tar -C $HOME/tc --strip-components=1 -zxf weebx.tar.gz && rm weebx.tar.gz
-             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
-
          elif [ "${{ inputs.compiler }}" = "zycromer-clang" ]; then
              aria2c -q -o zycromer.tar.gz "https://github.com/ZyCromerZ/Clang/releases/download/Clang-16.0.6-20260510-release/Clang-16.0.6-20260510-release.tar.gz"
-             tar -C $HOME/tc --strip-components=1 -zxf zycromer.tar.gz && rm zycromer.tar.gz
-             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
+             tar -C $HOME/tc -zxf zycromer.tar.gz && rm zycromer.tar.gz
 
          elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
              git clone --depth=1 https://github.com/WeeAris/SDClang.git $HOME/tc
          fi
+         rm -rf $HOME/tmp-tc
 
     - name: Clone Kernel Source
       run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
@@ -213,20 +213,21 @@ jobs:
          touch .scmversion
          export LOCALVERSION=""
          
-         # 4. APatch Support Fix
+         # 4. APatch & KernelSU Pre-requisites Fix
          echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          
-         # 5. Disable LTO Logic
+         # 5. Disable LTO Logic Safely
          if [ "${{ inputs.disable-lto }}" = "true" ]; then
              sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
              sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
+             sed -i 's/CONFIG_THIN_LTO=y/CONFIG_THIN_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
              echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          fi
 
-         # 6. Injection Mesin Frekuensi GPU Custom (FIXED TOTAL)
+         # 6. Injection Mesin Frekuensi GPU Custom
          echo "Mengonfigurasi Frekuensi GPU..."
          MIN_HZ=$((${{ inputs.gpu_min_clock }} * 1000000))
          MAX_HZ=$((${{ inputs.gpu_max_clock }} * 1000000))
@@ -254,15 +255,19 @@ jobs:
              sed -i '/cc1as/d' $VDSO_MAKEFILE || true
          fi
 
-    - name: Proses Kompilasi Pro
+    - name: Proses Kompilasi Pro (SMART IAS DETECTION)
       run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
-         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-         export KBUILD_BUILD_HOST="project-labs"
-         
-         if [ "${{ inputs.compiler }}" = "aosp-clang" ] || [ "${{ inputs.compiler }}" = "sdclang" ]; then
+         # Logika Pendeteksi Otomatis Integritas Assembler (LLVM_IAS)
+         if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
+             if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
+                 USE_IAS=0
+             else
+                 USE_IAS=1
+             fi
+         elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
              USE_IAS=0
          else
              USE_IAS=1
@@ -270,9 +275,6 @@ jobs:
          
          args="ARCH=arm64 O=../out \
               CC=clang \
-              HOSTCC=gcc \
-              HOSTCXX=g++ \
-              HOSTLD=ld \
               AR=llvm-ar \
               NM=llvm-nm \
               OBJCOPY=llvm-objcopy \
@@ -281,11 +283,15 @@ jobs:
               LLVM_IAS=$USE_IAS \
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-              CLANG_TRIPLE=aarch64-linux-gnu-"
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              KBUILD_BUILD_USER=${{ inputs.project_name }} \
+              KBUILD_BUILD_HOST=project-labs \
+              KCFLAGS=-Wno-error \
+              HOSTCFLAGS=-Wno-error"
 
-         # Bypass defconfig check to avoid early dtc abort
-         make -i $args ${{ inputs.kernel-config }}
-         make -k -j$(nproc --all) $args 2>&1 | tee build.log
+         mkdir -p ../out
+         make $args ${{ inputs.kernel-config }}
+         make -j$(nproc --all) $args Image.gz dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "ERROR: Kompilasi Gagal!"
@@ -293,15 +299,27 @@ jobs:
              exit 1
          fi
 
-    - name: Smart Packaging (FIXED PATH OUTPUT)
+    - name: Smart Packaging (SAFE EXTRACTION - FIXED PATH)
       run: |
+          rm -f *.zip
           git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
           rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
           
           [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
           
-          # Membaca file output hasil kompilasi dari folder diluar 'kernel-dir'
-          cp ../out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb || cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz || cp ../out/arch/arm64/boot/Image AnyKernel3/Image
+          # Salin file output utama dengan perbaikan teliti pada jalur pencarian direktori DTB
+          if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
+              cp ../out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
+          elif [ -f ../out/arch/arm64/boot/Image.gz ] && [ -f ../out/arch/arm64/boot/dts/qcom/sdm845-v2.dtb ]; then
+              cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/qcom/sdm845-v2.dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz-dtb
+          elif [ -f ../out/arch/arm64/boot/Image.gz ] && [ -f ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb ]; then
+              cat ../out/arch/arm64/boot/Image.gz ../out/arch/arm64/boot/dts/qcom/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb 2>/dev/null || cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz-dtb
+          elif [ -f ../out/arch/arm64/boot/Image.gz ]; then
+              cp ../out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+          else
+              cp ../out/arch/arm64/boot/Image AnyKernel3/Image
+          fi
+          
           [ -f ../out/arch/arm64/boot/dtbo.img ] && cp ../out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img || true
           
           cd AnyKernel3
