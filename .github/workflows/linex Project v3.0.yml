@@ -188,7 +188,7 @@ jobs:
              rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
              
          elif [ "${{ inputs.compiler }}" = "zycromer-clang" ]; then
-             aria2c -q -o zycromer.tar.gz "https://github.com/ZyCromerZ/Clang/releases/download/Clang-16.0.6-20260510-release/Clang-16.0.6-20260510-release.tar.gz"
+             aria2c -q -o zycromer.tar.gz "https://github.com/ZyCromerZ/Clang/releases/download/19.0.0-20240502-3/Clang-19.0.0-20240502-3.tar.gz"
              tar -C $HOME/tc -zxf zycromer.tar.gz && rm zycromer.tar.gz
              rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
 
