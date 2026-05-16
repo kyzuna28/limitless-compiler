@@ -11,7 +11,7 @@ on:
         type: string
       zip_name:
         description: 'Nama File ZIP Akhir'
-        default: 'Kyzuna-Beryllium'
+        default: 'Silvercore-Beryllium'
         required: true
         type: string
       kernel_version:
@@ -56,19 +56,29 @@ on:
         type: string
       kernel-url:
         description: 'Kernel Source URL'
-        default: 'https://github.com/linex-17/Kyzuna.git'
+        default: 'https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git'
         required: true
         type: string
       kernel-branch:
         description: 'Kernel Branch'
         default: 'main'
         required: true
-        type: string
+        type: choice
+        options:
+        - ten
+        - eleven
+        - twelve
+        - thirteen
       kernel-config:
         description: 'Kernel Config (Defconfig)'
         default: 'beryllium_defconfig'
         required: true
-        type: string
+        type: choice
+        options:
+          - beryllium_defconfig
+          - stock-beryllium_defconfig
+          - sdm845_defconfig
+          - sdm845-perf_defconfig
       kernelsu:
         description: 'KernelSU (ksu/next/false)'
         default: 'ksu'
