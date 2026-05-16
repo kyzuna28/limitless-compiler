@@ -1,6 +1,6 @@
 # linex Project - Customized for Poco F1 (beryllium)
 # Version 3.4 Pro Full Final - Ultimate Stability & Features
-name: Poco F1 Kernel Compiler 3.4
+name: Poco F1 Kernel Compiler 3.0
 on:
   workflow_dispatch:
     inputs:
@@ -57,6 +57,16 @@ on:
         - '14'
         - '15'
         - 'latest'
+      gpu_min_clock:
+        description: 'Frekuensi MINIMAL GPU (dalam MHz, Contoh: 180 atau 257)'
+        default: '180'
+        required: true
+        type: string
+      gpu_max_clock:
+        description: 'Frekuensi MAKSIMAL GPU / OC (dalam MHz, Contoh: 710, 800, 825)'
+        default: '800'
+        required: true
+        type: string
       kernel-url:
         description: 'Kernel Source URL'
         default: 'https://github.com/PainKiller3/android_kernel_xiaomi_sdm845.git'
@@ -161,10 +171,10 @@ jobs:
              git clone --depth=1 https://github.com/kdrag0n/proton-clang.git $HOME/tc
              
          elif [ "${{ inputs.compiler }}" = "eva-clang" ]; then
-             echo "Cloning Eva Clang..."
+             echo "Cloning Eva Clang dari GitHub Mirror Publik Resmi..."
              git clone --depth=1 https://github.com/mvaisakh/gcc-arm64.git -b gcc-master $HOME/gcc-64_eva
              git clone --depth=1 https://github.com/mvaisakh/gcc-arm.git -b gcc-master $HOME/gcc-32_eva
-             git clone --depth=1 https://gitlab.com/mvaisakh/clang-build.git $HOME/tc
+             git clone --depth=1 https://github.com/Stallion-Project/eva_clang.git $HOME/tc
              rm -rf $HOME/gcc-64 $HOME/gcc-32
              mv $HOME/gcc-64_eva $HOME/gcc-64
              mv $HOME/gcc-32_eva $HOME/gcc-32
@@ -213,8 +223,20 @@ jobs:
              sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
              echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
          fi
+
+         # 6. Injection Mesin Frekuensi GPU Custom (Overclock / Downclock)
+         echo "Mengonfigurasi Frekuensi GPU..."
+         MIN_HZ=$(($} ${{ inputs.gpu_min_clock }} * 1000000))
+         MAX_HZ=$(($} ${{ inputs.gpu_max_clock }} * 1000000))
+         TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
+         if [ -f "$TARGET_DTSI" ]; then
+             sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
+             sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MIN_HZ>;/g" $TARGET_DTSI || true
+         else
+             find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
+         fi
          
-         # 6. KernelSU / KernelSU-Next
+         # 7. KernelSU / KernelSU-Next
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
