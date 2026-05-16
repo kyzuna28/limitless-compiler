@@ -11,7 +11,7 @@ on:
         type: string
       zip_name:
         description: 'Nama File ZIP Akhir'
-        default: 'Silvercore-Beryllium'
+        default: 'Silvercore'
         required: true
         type: string
       kernel_version:
@@ -44,7 +44,6 @@ on:
         - proton-clang
         - weebx-clang
         - zycromer-clang
-        - zyc-clang
         - sdclang
       aosp-clang-ver:
         description: 'Versi Clang (Hanya jika pakai aosp-clang)'
@@ -128,7 +127,7 @@ jobs:
     - name: ...Instalasi Paket Dependensi
       run: |
          sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev python3 libbio-perl libipc-cmd-perl
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
 
     - name: Optimasi Swap Space
@@ -168,23 +167,22 @@ jobs:
              tar -C $HOME/tc -zxf tc.tar.gz && rm tc.tar.gz
          
          elif [ "${{ inputs.compiler }}" = "proton-clang" ]; then
-             echo "Cloning Proton Clang..."
-             git clone --depth=1 https://github.com/kdrag0n/proton-clang.git $HOME/tc
+             echo "Downloading Proton Clang..."
+             aria2c -q -o proton.tar.gz "https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
+             tar -C $HOME/tc --strip-components=1 -zxf proton.tar.gz && rm proton.tar.gz
+             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
              
          elif [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
              echo "Downloading Official WeebX (Yuki) Clang Tarball..."
              aria2c -q -o weebx.tar.gz "https://github.com/Klozz/Yuki-clang/archive/refs/heads/master.tar.gz"
              tar -C $HOME/tc --strip-components=1 -zxf weebx.tar.gz && rm weebx.tar.gz
+             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
 
          elif [ "${{ inputs.compiler }}" = "zycromer-clang" ]; then
              echo "Downloading Verified ZyCromerZ Clang Stable Build..."
              aria2c -q -o zycromer.tar.gz "https://github.com/ZyCromerZ/Clang/releases/download/Clang-16.0.6-20260510-release/Clang-16.0.6-20260510-release.tar.gz"
              tar -C $HOME/tc --strip-components=1 -zxf zycromer.tar.gz && rm zycromer.tar.gz
-
-         elif [ "${{ inputs.compiler }}" = "zyc-clang" ]; then
-             echo "Downloading ZycClang..."
-             aria2c -q -o zyc.tar.gz "https://raw.githubusercontent.com/zyandatanzil/Clang-Write/main/zyc-clang/zyc-clang-r485501b.tar.gz" || aria2c -q -o zyc.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r15/clang-r487747c.tar.gz"
-             tar -C $HOME/tc -zxf zyc.tar.gz && rm zyc.tar.gz
+             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
 
          elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
              echo "Cloning Snapdragon LLVM Compiler (SDClang)..."
@@ -228,8 +226,8 @@ jobs:
 
          # 6. Injection Mesin Frekuensi GPU Custom (Overclock / Downclock)
          echo "Mengonfigurasi Frekuensi GPU..."
-         MIN_HZ=$((${{ inputs.gpu_min_clock }} * 1000000))
-         MAX_HZ=$((${{ inputs.gpu_max_clock }} * 1000000))
+         MIN_HZ=$((${ inputs.gpu_min_clock }} * 1000000))
+         MAX_HZ=$((${ inputs.gpu_max_clock }} * 1000000))
          TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
          if [ -f "$TARGET_DTSI" ]; then
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
@@ -254,17 +252,16 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
-         # Menggunakan kombinasi bendera aman agar kompatibel di Ubuntu Modern & Custom Clang
          args="ARCH=arm64 O=../out \
               CC=clang \
               HOSTCC=gcc \
               HOSTCXX=g++ \
-              HOSTLD=/usr/bin/ld \
+              HOSTLD=ld \
               AR=llvm-ar \
               NM=llvm-nm \
               OBJCOPY=llvm-objcopy \
               OBJDUMP=llvm-objdump \
-              STRIP=llvm-strip \
+              STRIP=aarch64-linux-android-strip \
               LLVM_IAS=1 \
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
