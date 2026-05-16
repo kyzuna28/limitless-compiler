@@ -1,6 +1,7 @@
 # linex Project - Customized for Poco F1 (beryllium)
 # Version 2.8 Ultimate Final Fix - Safe RAM, Adaptive Engine & Secure Packaging
 name: Poco F1 Kernel Compiler 2.8
+
 on:
   workflow_dispatch:
     inputs:
@@ -31,11 +32,11 @@ on:
         type: string
       project_name:
         description: 'Build Project (@nama-project)'
-        default: 'kyy'
+        default: 'seleazs'
         required: true
         type: string
       compiler:
-        description: 'Pilih Compiler Pro'
+        description: 'Pilih Compiler Pro (Stabil Only)'
         default: 'aosp-clang'
         required: true
         type: choice
@@ -43,8 +44,6 @@ on:
         - aosp-clang
         - proton-clang
         - weebx-clang
-        - zycromer-clang
-        - sdclang
       aosp-clang-ver:
         description: 'Versi Clang (Hanya jika pakai aosp-clang)'
         default: '11'
@@ -142,17 +141,19 @@ jobs:
          sudo mkswap /mnt/swapfile
          sudo swapon /mnt/swapfile
 
-    - name: Download Toolchains (Hybrid Setup - ANTI LINK MATI)
+    - name: Download Toolchains (Clean Setup - No Drama)
       run: |
          rm -rf $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
          mkdir -p $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
          
+         echo "Downloading GCC Companion Toolchains..."
          aria2c -q -o gcc-64.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz"
          tar -C $HOME/gcc-64 -zxf gcc-64.tar.gz && rm gcc-64.tar.gz
          aria2c -q -o gcc-32.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz"
          tar -C $HOME/gcc-32 -zxf gcc-32.tar.gz && rm gcc-32.tar.gz
          
          if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
+             echo "Fetching Official Google AOSP Clang..."
              case "${{ inputs.aosp-clang-ver }}" in
                  11) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz" ;;
                  12) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-12.1.0_r27/clang-r416183b1.tar.gz" ;;
@@ -166,59 +167,19 @@ jobs:
          
          elif [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
              if [ "${{ inputs.compiler }}" = "proton-clang" ]; then
+                 echo "Fetching Proton Clang (Master Branch)..."
                  URL="https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
              else
+                 echo "Fetching WeebX/Yuki Clang (Master Branch)..."
                  URL="https://github.com/Klozz/Yuki-clang/archive/refs/heads/master.tar.gz"
              fi
              aria2c -q -o toolchain.tar.gz "$URL"
              tar -C $HOME/tmp-tc -zxf toolchain.tar.gz && rm toolchain.tar.gz
              mv $HOME/tmp-tc/*/* $HOME/tc/ 2>/dev/null || mv $HOME/tmp-tc/* $HOME/tc/
              rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
-
-         elif [ "${{ inputs.compiler }}" = "zycromer-clang" ] || [ "${{ inputs.compiler }}" = "zycromer" ]; then
-             echo "Mengunduh ZyCromerZ Clang (Dengan Pengalih Otomatis)..."
-             URL="https://github.com/ZyCromerZ/Clang/releases/download/19.0.0-20240502-3/Clang-19.0.0-20240502-3.tar.gz"
-             aria2c -q -o zycromer.tar.gz "$URL" || true
-             
-             if [ ! -s zycromer.tar.gz ]; then
-                 echo "=== WARNING: Link ZyCromerZ Mati! Dialihkan ke Google AOSP Clang 16/17 ==="
-                 URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r15/clang-r487747c.tar.gz"
-                 aria2c -q -o zycromer.tar.gz "$URL"
-             fi
-             
-             tar -C $HOME/tmp-tc -zxf zycromer.tar.gz && rm zycromer.tar.gz
-             
-             Z_BIN=$(find $HOME/tmp-tc -type d -name "bin" | head -n 1)
-             if [ -n "$Z_BIN" ]; then
-                 cp -r $(dirname "$Z_BIN")/* $HOME/tc/
-             else
-                 cp -r $HOME/tmp-tc/* $HOME/tc/ 2>/dev/null || true
-             fi
-             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
-
-         elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
-             echo "Mengunduh SDClang via Tarball (Dengan Pengalih Otomatis)..."
-             URL="https://github.com/YuuAsuka/sdclang-12/archive/refs/heads/master.tar.gz"
-             aria2c -q -o sdclang.tar.gz "$URL" || true
-             
-             if [ ! -s sdclang.tar.gz ]; then
-                 echo "=== WARNING: Link SDClang Mati! Dialihkan ke Qualcomm-AOSP Clang Base ==="
-                 URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-12.1.0_r27/clang-r416183b1.tar.gz"
-                 aria2c -q -o sdclang.tar.gz "$URL"
-             fi
-             
-             tar -C $HOME/tmp-tc -zxf sdclang.tar.gz && rm sdclang.tar.gz
-             
-             S_BIN=$(find $HOME/tmp-tc -type d -name "bin" | head -n 1)
-             if [ -n "$S_BIN" ]; then
-                 cp -r $(dirname "$S_BIN")/* $HOME/tc/
-             else
-                 cp -r $HOME/tmp-tc/* $HOME/tc/ 2>/dev/null || true
-             fi
-             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
          fi
          rm -rf $HOME/tmp-tc
-         
+
     - name: Clone Kernel Source
       run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
       
@@ -239,7 +200,7 @@ jobs:
          touch .scmversion
          export LOCALVERSION=""
          
-         # 1. FIXED AUDIO TECHPACK
+         # 1. FIXED AUDIO TECHPACK (AMPUTASI JALUR BERMASALAH)
          echo "Mematikan driver Elliptic Ultrasound Techpack..."
          sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' $TARGET_CONFIG || true
          echo "CONFIG_AUDIO_ELLIPTIC=n" >> $TARGET_CONFIG
@@ -257,7 +218,7 @@ jobs:
              sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
          fi
 
-         # 3. FIX TOTAL SECTION MISMATCH WARNINGS
+         # 3. FIX TOTAL SECTION MISMATCH WARNINGS (ESTETIKA LOG BERSIH)
          echo "Membungkam peringatan Section Mismatch modpost..."
          echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $TARGET_CONFIG
          echo "CONFIG_DEBUG_SECTION_MISMATCH=n" >> $TARGET_CONFIG
@@ -269,7 +230,6 @@ jobs:
          sed -i '/qvr-evt/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/qvr-dvt/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/sdm845-interposer/d' arch/arm64/boot/dts/qcom/Makefile || true
-
          sed -i 's/CONFIG_USB_CONFIGFS_F_DIAG=y/CONFIG_USB_CONFIGFS_F_DIAG=n/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_USB_F_QDSS=y/CONFIG_USB_F_QDSS=n/g' $TARGET_CONFIG || true
          
@@ -278,15 +238,15 @@ jobs:
          echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
          echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
          
-         # 5. AUTO-SELECT LTO ENGINE
+         # 5. AUTO-SELECT LTO ENGINE (DISABLE / ENABLE / THINLTO)
          SELECTED_LTO="${{ inputs.lto_type }}"
          echo "Mode LTO yang dipilih di UI: $SELECTED_LTO"
          
+         # Bersihkan dulu sisa config LTO bawaan agar tidak bentrok
          sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_LTO_NONE=.*/# CONFIG_LTO_NONE is not set/g' $TARGET_CONFIG || true
-
          if [ "$SELECTED_LTO" = "enable" ]; then
              echo "Mengaktifkan Full LTO Clang..."
              echo "CONFIG_LTO=y" >> $TARGET_CONFIG
@@ -309,7 +269,6 @@ jobs:
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
              sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/g" $TARGET_DTSI || true
          else
-             # PERBAIKAN: Menghapus typo kata 'digest' yang mengganggu fungsi find
              find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
          fi
          
@@ -319,7 +278,16 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-         # PERBAIKAN: Seluruh block sed manipulasi vDSO global di sini telah DIHAPUS agar tidak merusak ZyCromer
+         # === RAMUAN TAMBAHAN: JINAKKAN MAKEFILE VDSO UNTUK CLANG 11/12/13 ===
+         echo "Menjinakkan berkas Makefile VDSO dari opsi no-integrated-as..."
+         VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
+         if [ -f "$VDSO_MAKEFILE" ]; then
+             if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
+                 sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
+                 sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
+                 sed -i '/cc1as/d' $VDSO_MAKEFILE || true
+             fi
+         fi
 
          sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
          echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
@@ -331,43 +299,9 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
-         SELECTED_COMPILER="${{ inputs.compiler }}"
-         echo "Compiler yang dipilih di UI: $SELECTED_COMPILER"
-         
-         EXTRA_KCFLAGS=""
-         VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
-         
-         # Kembalikan kondisi vDSO ke bentuk aslinya untuk menghindari tabrakan cache runner
-         if [ -f "$VDSO_MAKEFILE" ]; then
-             git checkout HEAD -- $VDSO_MAKEFILE || true
-         fi
-         
-         if [ "$SELECTED_COMPILER" = "weebx-clang" ] || [ "$SELECTED_COMPILER" = "proton-clang" ] || [ "$SELECTED_COMPILER" = "zycromer-clang" ] || [ "$SELECTED_COMPILER" = "zycromer" ] || [ "$SELECTED_COMPILER" = "aosp-clang" ]; then
-             echo "Memicu Integrated Assembler (LLVM_IAS=1) untuk compiler modern..."
-             USE_IAS=1
-             
-             # ANTI-JUNK LINES: Bersihkan flag pembatas assembler eksternal khusus untuk compiler modern
-             if [ -f "$VDSO_MAKEFILE" ]; then
-                 echo "=== OPTIMASI VDSO UNTUK INTEGRATED ASSEMBLER ==="
-                 sed -i 's/-no-integrated-as//g' $VDSO_MAKEFILE || true
-                 sed -i 's/$(ARM64_ASM_CROSS_COMPILE)//g' $VDSO_MAKEFILE || true
-             fi
-         elif [ "$SELECTED_COMPILER" = "sdclang" ]; then
-             echo "Memicu GCC External Assembler (LLVM_IAS=0) untuk SDClang..."
-             USE_IAS=0
-             EXTRA_KCFLAGS="-mcpu=cortex-a75"
-             
-             if [ -f "$VDSO_MAKEFILE" ]; then
-                 echo "=== OPTIMASI VDSO MAKEFILE UNTUK SDCLANG EXTERNAL ASSEMBLER ==="
-                 sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
-                 sed -i 's/-no-integrated-as//g' $VDSO_MAKEFILE || true
-                 sed -i 's/-integrated-as//g' $VDSO_MAKEFILE || true
-                 sed -i 's/$(CC) $(ccflags-y)/$(CC) -no-integrated-as $(ccflags-y)/g' $VDSO_MAKEFILE || true
-             fi
-         else
-             echo "Memicu GCC External Assembler (LLVM_IAS=0) sebagai fallback..."
-             USE_IAS=0
-         fi
+         # Karena semua compiler stabil yang tersisa modern, mutlak gunakan Integrated Assembler
+         USE_IAS=1
+         echo "Menggunakan Integrated Assembler (LLVM_IAS=1) demi kestabilan penuh."
          
          rm -rf ../out && mkdir -p ../out
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
@@ -391,7 +325,7 @@ jobs:
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
-              KCFLAGS="-w -Wno-error -fno-builtin $EXTRA_KCFLAGS" \
+              KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
