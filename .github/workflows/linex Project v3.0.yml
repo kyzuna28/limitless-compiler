@@ -1,12 +1,12 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.0 Pro Full Final - Ultimate Stability & Features
+# Version 3.1 Pro Full Final - Ultimate Stability & Features
 name: Poco F1 Kernel Silvercore Compiler 3.0
 on:
   workflow_dispatch:
     inputs:
       ubuntu:
-        description: 'Run on'
-        default: 'ubuntu-latest'
+        description: 'Run on (Rekomendasi: ubuntu-22.04 atau ubuntu-latest)'
+        default: 'ubuntu-22.04'
         required: true
         type: string
       zip_name:
@@ -50,7 +50,7 @@ on:
         - proton-clang
         - azure-clang
       aosp-clang-ver:
-        description: 'Versi Clang (Berlaku untuk semua jenis compiler)'
+        description: 'Versi Clang (Hanya berlaku untuk opsi aosp-clang)'
         default: '11'
         required: true
         type: choice
@@ -115,7 +115,7 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build
       run: |
-         echo "Building Poco F1 Kernel Version 3.0 Pro"
+         echo "Building Poco F1 Kernel Version 3.1 Pro"
          sudo timedatectl set-timezone Asia/Jakarta
 
     - name: Checkout Workflow
@@ -124,7 +124,7 @@ jobs:
     - name: Instalasi Paket Dependensi
       run: |
          sudo apt-get update
-         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs
+         sudo apt-get install --no-install-recommends -y gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu lld llvm g++-aarch64-linux-gnu bc aria2 zip tar libssl-dev flex bison git git-lfs libelf-dev
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
 
     - name: Optimasi Swap Space
@@ -226,8 +226,17 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
+         # Penambahan HOSTLD, HOSTCC, HOSTCXX untuk menghindari konflik relr.dyn glibc Ubuntu
          args="ARCH=arm64 O=../out \
               CC=clang \
+              HOSTCC=gcc \
+              HOSTCXX=g++ \
+              HOSTLD=ld \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              STRIP=llvm-strip \
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu-"
@@ -268,5 +277,5 @@ jobs:
     - name: Upload Final Build
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-3.0"
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-3.1"
         path: "*.zip"
