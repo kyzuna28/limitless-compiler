@@ -20,13 +20,13 @@ on:
         required: true
         type: string
       kernel_name:
-        description: 'Nama Utama Kernel (Contoh: 𝙺𝚢𝚣𝚞𝚗𝚊)'
-        default: '𝙎𝙤𝙪𝙩𝙝𝙬𝙚𝙨𝙩'
+        description: 'Nama Utama Kernel'
+        default: 'Kyzuna' # Pakai huruf biasa, jangan font aesthetic
         required: true
         type: string
       rom_type:
-        description: 'Tipe ROM/Tag (Contoh: 𝚁𝚊verify)'
-        default: '𝘿𝙮𝙣𝙖𝙢𝙞𝙘-𝙂𝙠𝙞'
+        description: 'Tipe ROM / Tag Cabang'
+        default: 'Raven-Gki' # Pakai huruf biasa
         required: true
         type: string
       project_name:
