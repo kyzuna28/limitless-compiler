@@ -1,5 +1,5 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 2.8 Ultimate Stable - Perfect Syntax & VDSO Hardcoded Fix
+# Version 2.8 Ultimate Stable - Perfect Syntax, VDSO Fix & Me Symbol Branding
 name: Poco F1 Kernel Compiler 2.8
 on:
   workflow_dispatch:
@@ -15,18 +15,18 @@ on:
         required: true
         type: string
       kernel_version:
-        description: 'Isi angka (misal 4.19.1) atau biarkan "original" untuk versi asli'
+        description: 'Isi angka (misal 4.19.1) or biarkan "original" untuk versi asli'
         default: 'original'
         required: true
         type: string
       kernel_name:
-        description: 'Nama Utama Kernel (Contoh: kyzuna)'
-        default: 'kyzuna'
+        description: 'Nama Utama Kernel (Contoh: 𝙺𝚢𝚣𝚞𝚗𝚊)'
+        default: '𝙺𝚢𝚣𝚞𝚗𝚊'
         required: true
         type: string
       rom_type:
-        description: 'Tipe ROM/Tag (nse / se / dynamic / miui)'
-        default: 'nse'
+        description: 'Tipe ROM/Tag (Contoh: 𝚁𝚊𝚟𝚎𝚗)'
+        default: '𝚁𝚊𝚟𝚎𝚗'
         required: true
         type: string
       project_name:
@@ -185,8 +185,8 @@ jobs:
              sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
          fi
          
-         # 2. Branding Localversion
-         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
+         # 2. Branding Localversion (Otomatis Mengubah Tanda Hubung '-' Menjadi Simbol '么' dengan Spasi Seimbang)
+         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }} 么 ${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
          
          # 3. Clean Versioning (No '+' or '-dirty')
          touch .scmversion
@@ -207,8 +207,8 @@ jobs:
 
          # 6. Smart GPU Clock Engine (Inject Overclock & Downclock)
          echo "Menyelaraskan Frekuensi Custom GPU..."
-         MIN_HZ=$((${{ inputs.gpu_min_clock }} * 1000000))
-         MAX_HZ=$((${{ inputs.gpu_max_clock }} * 1000000))
+         MIN_HZ=$(($} * 1000000))
+         MAX_HZ=$(($} * 1000000))
          TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
          if [ -f "$TARGET_DTSI" ]; then
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
