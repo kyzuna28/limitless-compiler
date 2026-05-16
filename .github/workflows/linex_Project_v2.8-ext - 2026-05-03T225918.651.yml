@@ -177,11 +177,9 @@ jobs:
 
          elif [ "${{ inputs.compiler }}" = "zycromer-clang" ] || [ "${{ inputs.compiler }}" = "zycromer" ]; then
              echo "Mengunduh ZyCromerZ Clang (Dengan Pengalih Otomatis)..."
-             # Menggunakan mirror rilis Clang 19 buatan ZyCromerZ yang aktif
              URL="https://github.com/ZyCromerZ/Clang/releases/download/19.0.0-20240502-3/Clang-19.0.0-20240502-3.tar.gz"
              aria2c -q -o zycromer.tar.gz "$URL" || true
              
-             # FALLBACK ENGINE: Jika tautan di atas mati/kosong, paksa alihkan ke Google Clang Base setara
              if [ ! -s zycromer.tar.gz ]; then
                  echo "=== WARNING: Link ZyCromerZ Mati! Dialihkan ke Google AOSP Clang 16/17 ==="
                  URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r15/clang-r487747c.tar.gz"
@@ -190,7 +188,6 @@ jobs:
              
              tar -C $HOME/tmp-tc -zxf zycromer.tar.gz && rm zycromer.tar.gz
              
-             # Penata letak folder adaptif untuk struktur ZyCromerZ
              Z_BIN=$(find $HOME/tmp-tc -type d -name "bin" | head -n 1)
              if [ -n "$Z_BIN" ]; then
                  cp -r $(dirname "$Z_BIN")/* $HOME/tc/
@@ -201,11 +198,9 @@ jobs:
 
          elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
              echo "Mengunduh SDClang via Tarball (Dengan Pengalih Otomatis)..."
-             # Menggunakan cermin publik berbasis tarbal yang bebas autentikasi login
              URL="https://github.com/YuuAsuka/sdclang-12/archive/refs/heads/master.tar.gz"
              aria2c -q -o sdclang.tar.gz "$URL" || true
              
-             # FALLBACK ENGINE: Jika tautan git/kustom mati, paksa alihkan ke Google Qualcomm Clang Base
              if [ ! -s sdclang.tar.gz ]; then
                  echo "=== WARNING: Link SDClang Mati! Dialihkan ke Qualcomm-AOSP Clang Base ==="
                  URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-12.1.0_r27/clang-r416183b1.tar.gz"
@@ -214,7 +209,6 @@ jobs:
              
              tar -C $HOME/tmp-tc -zxf sdclang.tar.gz && rm sdclang.tar.gz
              
-             # Ekstraksi adaptif untuk subfolder SDClang
              S_BIN=$(find $HOME/tmp-tc -type d -name "bin" | head -n 1)
              if [ -n "$S_BIN" ]; then
                  cp -r $(dirname "$S_BIN")/* $HOME/tc/
@@ -245,7 +239,7 @@ jobs:
          touch .scmversion
          export LOCALVERSION=""
          
-         # 1. FIXED AUDIO TECHPACK (AMPUTASI JALUR BERMASALAH)
+         # 1. FIXED AUDIO TECHPACK
          echo "Mematikan driver Elliptic Ultrasound Techpack..."
          sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' $TARGET_CONFIG || true
          echo "CONFIG_AUDIO_ELLIPTIC=n" >> $TARGET_CONFIG
@@ -263,7 +257,7 @@ jobs:
              sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
          fi
 
-         # 3. FIX TOTAL SECTION MISMATCH WARNINGS (ESTETIKA LOG BERSIH)
+         # 3. FIX TOTAL SECTION MISMATCH WARNINGS
          echo "Membungkam peringatan Section Mismatch modpost..."
          echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $TARGET_CONFIG
          echo "CONFIG_DEBUG_SECTION_MISMATCH=n" >> $TARGET_CONFIG
@@ -284,11 +278,10 @@ jobs:
          echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
          echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
          
-         # 5. AUTO-SELECT LTO ENGINE (DISABLE / ENABLE / THINLTO)
+         # 5. AUTO-SELECT LTO ENGINE
          SELECTED_LTO="${{ inputs.lto_type }}"
          echo "Mode LTO yang dipilih di UI: $SELECTED_LTO"
          
-         # Bersihkan dulu sisa config LTO bawaan agar tidak bentrok
          sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/g' $TARGET_CONFIG || true
@@ -316,7 +309,8 @@ jobs:
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
              sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/g" $TARGET_DTSI || true
          else
-             find arch/arm64/boot/dts/ digest -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
+             # PERBAIKAN: Menghapus typo kata 'digest' yang mengganggu fungsi find
+             find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
          fi
          
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
@@ -325,16 +319,7 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-             echo "Menjinakkan Makefile VDSO secara adaptif untuk ZyCromer & SDClang..."
-         VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
-         if [ -f "$VDSO_MAKEFILE" ]; then
-             # Amputasi total semua flag assembler ganda yang bikin crash
-             sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
-             sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
-             sed -i 's/CC_FLAGS_VDSO .=\s*-integrated-as//g' $VDSO_MAKEFILE || true
-             sed -i '/cc1as/d' $VDSO_MAKEFILE || true
-             sed -i 's/$(CC) $(ccflags-y)/$(CC) -no-integrated-as $(ccflags-y)/g' $VDSO_MAKEFILE || true
-         fi
+         # PERBAIKAN: Seluruh block sed manipulasi vDSO global di sini telah DIHAPUS agar tidak merusak ZyCromer
 
          sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
          echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
@@ -346,26 +331,38 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
-         # AUTO-SELECT DETECTOR ENGINE: Menentukan nilai IAS dari drop-down UI GitHub
          SELECTED_COMPILER="${{ inputs.compiler }}"
          echo "Compiler yang dipilih di UI: $SELECTED_COMPILER"
          
-         # Zycromer-clang dimasukkan ke LLVM_IAS=1 karena berbasis LLVM modern untuk menghindari bug vDSO
-         if [ "$SELECTED_COMPILER" = "weebx-clang" ] || [ "$SELECTED_COMPILER" = "proton-clang" ] || [ "$SELECTED_COMPILER" = "zycromer-clang" ] || [ "$SELECTED_COMPILER" = "zycromer" ]; then
+         EXTRA_KCFLAGS=""
+         VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
+         
+         # Kembalikan kondisi vDSO ke bentuk aslinya untuk menghindari tabrakan cache runner
+         if [ -f "$VDSO_MAKEFILE" ]; then
+             git checkout HEAD -- $VDSO_MAKEFILE || true
+         fi
+         
+         if [ "$SELECTED_COMPILER" = "weebx-clang" ] || [ "$SELECTED_COMPILER" = "proton-clang" ] || [ "$SELECTED_COMPILER" = "zycromer-clang" ] || [ "$SELECTED_COMPILER" = "zycromer" ] || [ "$SELECTED_COMPILER" = "aosp-clang" ]; then
              echo "Memicu Integrated Assembler (LLVM_IAS=1) untuk compiler modern..."
              USE_IAS=1
+             
+             # ANTI-JUNK LINES: Bersihkan flag pembatas assembler eksternal khusus untuk compiler modern
+             if [ -f "$VDSO_MAKEFILE" ]; then
+                 echo "=== OPTIMASI VDSO UNTUK INTEGRATED ASSEMBLER ==="
+                 sed -i 's/-no-integrated-as//g' $VDSO_MAKEFILE || true
+                 sed -i 's/$(ARM64_ASM_CROSS_COMPILE)//g' $VDSO_MAKEFILE || true
+             fi
          elif [ "$SELECTED_COMPILER" = "sdclang" ]; then
              echo "Memicu GCC External Assembler (LLVM_IAS=0) untuk SDClang..."
              USE_IAS=0
+             EXTRA_KCFLAGS="-mcpu=cortex-a75"
              
-             # Intervensi VDSO hanya jika benar-benar menggunakan compiler lama/SDClang yang butuh bypass
-             VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
              if [ -f "$VDSO_MAKEFILE" ]; then
-                 echo "=== OPTIMASI VDSO MAKEFILE UNTUK EXTERNAL ASSEMBLER ==="
-                 # Bersihkan flag bawaan yang konflik
+                 echo "=== OPTIMASI VDSO MAKEFILE UNTUK SDCLANG EXTERNAL ASSEMBLER ==="
                  sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
                  sed -i 's/-no-integrated-as//g' $VDSO_MAKEFILE || true
                  sed -i 's/-integrated-as//g' $VDSO_MAKEFILE || true
+                 sed -i 's/$(CC) $(ccflags-y)/$(CC) -no-integrated-as $(ccflags-y)/g' $VDSO_MAKEFILE || true
              fi
          else
              echo "Memicu GCC External Assembler (LLVM_IAS=0) sebagai fallback..."
@@ -394,7 +391,7 @@ jobs:
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
-              KCFLAGS="-w -Wno-error -fno-builtin" \
+              KCFLAGS="-w -Wno-error -fno-builtin $EXTRA_KCFLAGS" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
