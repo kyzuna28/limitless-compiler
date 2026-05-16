@@ -102,11 +102,15 @@ on:
         - ksu
         - next
         - "false"
-      disable-lto:
-        description: 'Disable LTO'
-        default: 'true'
+      lto_type:
+        description: 'Pilih Mode LTO (Link Time Optimization)'
+        default: 'disable'
         required: true
-        type: string
+        type: choice
+        options:
+        - disable
+        - enable
+        - thinlto
       AK3:
         description: 'AnyKernel3 Template'
         default: 'https://github.com/osm0sis/AnyKernel3'
@@ -206,30 +210,74 @@ jobs:
              sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
          fi
          
-         sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=" ${{ inputs.kernel_name }} 么 ${{ inputs.rom_type }}"/g' arch/arm64/configs/${{ inputs.kernel-config }}
+         TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
+         
+         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\" ${{ inputs.kernel_name }} 么 ${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
          
          touch .scmversion
          export LOCALVERSION=""
          
-         # FIXED & SECURED: Potong target QVR & Interposer rusak di Versi 3.0
-         echo "Mengamankan Makefile DTS dari komponen VR (QVR) dan Interposer yang rusak..."
+         # 1. FIXED AUDIO TECHPACK (AMPUTASI JALUR BERMASALAH)
+         echo "Mematikan driver Elliptic Ultrasound Techpack..."
+         sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' $TARGET_CONFIG || true
+         echo "CONFIG_AUDIO_ELLIPTIC=n" >> $TARGET_CONFIG
+         if [ -f techpack/audio/asoc/Makefile ]; then
+             sed -i '/elliptic/d' techpack/audio/asoc/Makefile || true
+         fi
+         
+         # 2. FIXED EFI STUB LINKER ERROR
+         echo "Menonaktifkan EFI dan EFI_STUB dari file defconfig..."
+         sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_EFI_STUB=y/CONFIG_EFI_STUB=n/g' $TARGET_CONFIG || true
+         echo "CONFIG_EFI=n" >> $TARGET_CONFIG
+         echo "CONFIG_EFI_STUB=n" >> $TARGET_CONFIG
+         if [ -f drivers/firmware/Makefile ]; then
+             sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
+         fi
+
+         # 3. FIX TOTAL SECTION MISMATCH WARNINGS (ESTETIKA LOG BERSIH)
+         echo "Membungkam peringatan Section Mismatch modpost..."
+         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $TARGET_CONFIG
+         echo "CONFIG_DEBUG_SECTION_MISMATCH=n" >> $TARGET_CONFIG
+         sed -i 's/CONFIG_DEBUG_SECTION_MISMATCH=y/CONFIG_DEBUG_SECTION_MISMATCH=n/g' $TARGET_CONFIG || true
+
+         # 4. CLEANSING RANJAU DTS QUALCOMM
+         echo "Membersihkan target file VR (QVR) dan interposer rusak..."
          sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/qvr-evt/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/qvr-dvt/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/sdm845-interposer/d' arch/arm64/boot/dts/qcom/Makefile || true
+
+         sed -i 's/CONFIG_USB_CONFIGFS_F_DIAG=y/CONFIG_USB_CONFIGFS_F_DIAG=n/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_USB_F_QDSS=y/CONFIG_USB_F_QDSS=n/g' $TARGET_CONFIG || true
          
-         echo "CONFIG_USB_CONFIGFS_F_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_USB_F_QDSS=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         echo "CONFIG_KALLSYMS=y" >> $TARGET_CONFIG
+         echo "CONFIG_KALLSYMS_ALL=y" >> $TARGET_CONFIG
+         echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
+         echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
          
-         echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
-         echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         # 5. AUTO-SELECT LTO ENGINE (DISABLE / ENABLE / THINLTO)
+         SELECTED_LTO="${{ inputs.lto_type }}"
+         echo "Mode LTO yang dipilih di UI: $SELECTED_LTO"
          
-         if [ "${{ inputs.disable-lto }}" = "true" ]; then
-             sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
-             sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' arch/arm64/configs/${{ inputs.kernel-config }} || true
-             echo "CONFIG_LTO_NONE=y" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         # Bersihkan dulu sisa config LTO bawaan agar tidak bentrok
+         sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_LTO_NONE=.*/# CONFIG_LTO_NONE is not set/g' $TARGET_CONFIG || true
+
+         if [ "$SELECTED_LTO" = "enable" ]; then
+             echo "Mengaktifkan Full LTO Clang..."
+             echo "CONFIG_LTO=y" >> $TARGET_CONFIG
+             echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
+         elif [ "$SELECTED_LTO" = "thinlto" ]; then
+             echo "Mengaktifkan ThinLTO Clang..."
+             echo "CONFIG_LTO=y" >> $TARGET_CONFIG
+             echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
+             echo "CONFIG_THINLTO=y" >> $TARGET_CONFIG
+         else
+             echo "Menonaktifkan LTO (LTO None)..."
+             echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
 
          echo "Mengonfigurasi Frekuensi GPU..."
@@ -238,9 +286,9 @@ jobs:
          TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
          if [ -f "$TARGET_DTSI" ]; then
              sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
-             sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MIN_HZ>;/g" $TARGET_DTSI || true
+             sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/g" $TARGET_DTSI || true
          else
-             find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
+             find arch/arm64/boot/dts/ digest -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
          fi
          
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
@@ -259,7 +307,8 @@ jobs:
              fi
          fi
 
-         echo "CONFIG_LKDTM=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
+         sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
+         echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
          
     - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
@@ -268,7 +317,7 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
          
-         # AUTO-SELECT DETECTOR ENGINE: Memilih Assembler Berdasarkan Pilihan UI GitHub
+         # AUTO-SELECT DETECTOR ENGINE: Menentukan nilai IAS dari drop-down UI GitHub
          SELECTED_COMPILER="${{ inputs.compiler }}"
          echo "Compiler yang dipilih di UI: $SELECTED_COMPILER"
          
