@@ -21,12 +21,12 @@ on:
         type: string
       kernel_name:
         description: 'Nama Utama Kernel (Contoh: 𝙺𝚢𝚣𝚞𝚗𝚊)'
-        default: '𝙺𝚢𝚣𝚞𝚗𝚊'
+        default: '𝙎𝙤𝙪𝙩𝙝𝙬𝙚𝙨𝙩'
         required: true
         type: string
       rom_type:
         description: 'Tipe ROM/Tag (Contoh: 𝚁𝚊verify)'
-        default: '𝚁𝚊verify'
+        default: '𝘿𝙮𝙣𝙖𝙢𝙞𝙘-𝙂𝙠𝙞'
         required: true
         type: string
       project_name:
@@ -41,7 +41,7 @@ on:
         type: string
       aosp-clang-ver:
         description: 'Versi Clang (Hanya jika pakai aosp-clang: 11 / 12 / 13 / 14 / 15 / latest)'
-        default: '14'
+        default: '11'
         required: true
         type: string
       gpu_min_clock:
