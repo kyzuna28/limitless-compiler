@@ -1,7 +1,6 @@
 # linex Project - Customized for Poco F1 (beryllium)
 # Version 2.8 Ultimate Final Fix - Safe RAM, Adaptive Engine & Secure Packaging
-name: fix lineage 19.1 keatas
-
+name: fix lineage os 19.1 keatas
 on:
   workflow_dispatch:
     inputs:
@@ -32,11 +31,11 @@ on:
         type: string
       project_name:
         description: 'Build Project (@nama-project)'
-        default: 'seleazs'
+        default: 'kyy'
         required: true
         type: string
       compiler:
-        description: 'Pilih Compiler Pro (Stabil Only)'
+        description: 'Pilih Compiler Pro'
         default: 'aosp-clang'
         required: true
         type: choice
@@ -44,17 +43,30 @@ on:
         - aosp-clang
         - proton-clang
         - weebx-clang
+        - zycromer-clang
+        - sdclang
       aosp-clang-ver:
         description: 'Versi Clang (Hanya jika pakai aosp-clang)'
-        default: '12'
+        default: '11'
         required: true
         type: choice
         options:
+        - '11'
         - '12'
         - '13'
         - '14'
         - '15'
         - 'latest'
+      gpu_min_clock:
+        description: 'Frekuensi MINIMAL GPU (dalam MHz, Contoh: 180 atau 257)'
+        default: '180'
+        required: true
+        type: string
+      gpu_max_clock:
+        description: 'Frekuensi MAKSIMAL GPU / OC (dalam MHz, Contoh: 710, 800, 825)'
+        default: '800'
+        required: true
+        type: string
       kernel-url:
         description: 'Kernel Source URL (Bisa diganti bebas)'
         default: 'https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git'
@@ -62,7 +74,7 @@ on:
         type: string
       kernel-branch:
         description: 'Kernel Branch'
-        default: 'lineage-19.1'
+        default: 'lineage-20'
         required: true
         type: string
       kernel-config:
@@ -79,15 +91,11 @@ on:
         - ksu
         - next
         - "false"
-      lto_type:
-        description: 'Pilih Mode LTO (Link Time Optimization)'
-        default: 'disable'
+      disable-lto:
+        description: 'Disable LTO (true / false)'
+        default: 'true'
         required: true
-        type: choice
-        options:
-        - disable
-        - enable
-        - thinlto
+        type: string
       AK3:
         description: 'AnyKernel3 Template URL'
         default: 'https://github.com/osm0sis/AnyKernel3'
@@ -104,7 +112,6 @@ jobs:
          sudo timedatectl set-timezone Asia/Jakarta
          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
          sudo docker image prune --all --force
-
     - name: Checkout Workflow
       uses: actions/checkout@v4
 
@@ -120,7 +127,6 @@ jobs:
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
-
     - name: Optimasi Swap Space Tinggi (Anti IO Failure)
       run: |
          sudo swapoff -a || true
@@ -129,21 +135,19 @@ jobs:
          sudo chmod 600 /mnt/swapfile
          sudo mkswap /mnt/swapfile
          sudo swapon /mnt/swapfile
-
-    - name: Download Toolchains (Clean Setup - No Drama)
+    - name: Download Toolchains (Hybrid Setup)
       run: |
          rm -rf $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
          mkdir -p $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
          
-         echo "Downloading GCC Companion Toolchains..."
          aria2c -q -o gcc-64.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/0a0604336d4d1067aa1aaef8d3779b31fcee841d.tar.gz"
          tar -C $HOME/gcc-64 -zxf gcc-64.tar.gz && rm gcc-64.tar.gz
          aria2c -q -o gcc-32.tar.gz "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/4d16d93f49c2b5ecdd0f12c38d194835dd595603.tar.gz"
          tar -C $HOME/gcc-32 -zxf gcc-32.tar.gz && rm gcc-32.tar.gz
          
          if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
-             echo "Fetching Official Google AOSP Clang..."
              case "${{ inputs.aosp-clang-ver }}" in
+                 11) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r46/clang-r383902b1.tar.gz" ;;
                  12) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-12.1.0_r27/clang-r416183b1.tar.gz" ;;
                  13) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-13.0.0_r30/clang-r450784d.tar.gz" ;;
                  14) URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-14.0.0_r15/clang-r487747c.tar.gz" ;;
@@ -155,19 +159,22 @@ jobs:
          
          elif [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
              if [ "${{ inputs.compiler }}" = "proton-clang" ]; then
-                 echo "Fetching Proton Clang (Master Branch)..."
                  URL="https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
              else
-                 echo "Fetching WeebX/Yuki Clang (Master Branch)..."
                  URL="https://github.com/Klozz/Yuki-clang/archive/refs/heads/master.tar.gz"
              fi
              aria2c -q -o toolchain.tar.gz "$URL"
              tar -C $HOME/tmp-tc -zxf toolchain.tar.gz && rm toolchain.tar.gz
              mv $HOME/tmp-tc/*/* $HOME/tc/ 2>/dev/null || mv $HOME/tmp-tc/* $HOME/tc/
              rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
+         elif [ "${{ inputs.compiler }}" = "zycromer-clang" ]; then
+             aria2c -q -o zycromer.tar.gz "https://github.com/ZyCromerZ/Clang/releases/download/Clang-16.0.6-20260510-release/Clang-16.0.6-20260510-release.tar.gz"
+             tar -C $HOME/tc -zxf zycromer.tar.gz && rm zycromer.tar.gz
+             rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
+         elif [ "${{ inputs.compiler }}" = "sdclang" ]; then
+             git clone --depth=1 https://github.com/WeeAris/SDClang.git $HOME/tc
          fi
          rm -rf $HOME/tmp-tc
-
     - name: Clone Kernel Source
       run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
       
@@ -188,26 +195,18 @@ jobs:
          
          # Mengunci agar sistem build tidak menambahkan tanda '+' otomatis di ujung versi kernel
          echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
+         
+         # HAPUS perintah 'export LOCALVERSION=""' lama agar tidak menimpa / membatalkan string nama kernel saat proses kompilasi berlangsung
          rm -f .scmversion
          
-         # =================================================================
-         # ===== AUDIO TECHPACK & ELLIPTIC ULTRASOUND GLOBAL PATCH =========
-         # =================================================================
-         echo "Membersihkan secara radikal ranjau Audio Techpack dan Elliptic Driver..."
+         # 1. FIXED AUDIO TECHPACK (AMPUTASI JALUR BERMASALAH)
+         echo "Mematikan driver Elliptic Ultrasound Techpack..."
          sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' $TARGET_CONFIG || true
          echo "CONFIG_AUDIO_ELLIPTIC=n" >> $TARGET_CONFIG
-         
-         # PENTING: Cari SEMUA Makefile & Kbuild di folder techpack/audio, matikan pemicu mogok kompiler
-         if [ -d techpack/audio ]; then
-             find techpack/audio/ -type f \( -name "Makefile" -o -name "Kbuild" \) | xargs sed -i 's/obj-\$(CONFIG_AUDIO_ELLIPTIC)/#/g' 2>/dev/null || true
-             find techpack/audio/ -type f \( -name "Makefile" -o -name "Kbuild" \) | xargs sed -i 's/snd-soc-qdsp6v2-objs-back/#/g' 2>/dev/null || true
-             find techpack/audio/ -type f \( -name "Makefile" -o -name "Kbuild" \) | xargs sed -i 's/-Werror//g' 2>/dev/null || true
+         if [ -f techpack/audio/asoc/Makefile ]; then
+             sed -i '/elliptic/d' techpack/audio/asoc/Makefile || true
          fi
          
-         # Matikan mode pengetesan audio otomatis agar compiler tidak iseng meriksa komponen usang
-         echo "CONFIG_SND_SOC_BUILD_TEST=n" >> $TARGET_CONFIG
-         # =================================================================
-
          # 2. FIXED EFI STUB LINKER ERROR
          echo "Menonaktifkan EFI dan EFI_STUB dari file defconfig..."
          sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' $TARGET_CONFIG || true
@@ -217,13 +216,11 @@ jobs:
          if [ -f drivers/firmware/Makefile ]; then
              sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
          fi
-
          # 3. FIX TOTAL SECTION MISMATCH WARNINGS (ESTETIKA LOG BERSIH)
          echo "Membungkam peringatan Section Mismatch modpost..."
          echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $TARGET_CONFIG
          echo "CONFIG_DEBUG_SECTION_MISMATCH=n" >> $TARGET_CONFIG
          sed -i 's/CONFIG_DEBUG_SECTION_MISMATCH=y/CONFIG_DEBUG_SECTION_MISMATCH=n/g' $TARGET_CONFIG || true
-
          # 4. CLEANSING RANJAU DTS QUALCOMM
          echo "Membersihkan target file VR (QVR) dan interposer rusak..."
          sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
@@ -238,78 +235,42 @@ jobs:
          echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
          echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
          
-         # 5. AUTO-SELECT LTO ENGINE (DISABLE / ENABLE / THINLTO)
-         SELECTED_LTO="${{ inputs.lto_type }}"
-         echo "Mode LTO yang dipilih di UI: $SELECTED_LTO"
-         
-         # 6. UNIVERSAL ANDROID COMPATIBILITY PATCH (ANDROID 10 - 13+)
-         echo "Menyuntikkan flag kompatibilitas lintas Android (10-13+)..."
-         echo "CONFIG_ANDROID_BINDERFS=y" >> $TARGET_CONFIG
-         echo "CONFIG_CGROUPS=y" >> $TARGET_CONFIG
-         echo "CONFIG_CGROUP_BPF=y" >> $TARGET_CONFIG
-         echo "CONFIG_MEMCG=y" >> $TARGET_CONFIG
-         echo "CONFIG_MEMCG_SWAP=y" >> $TARGET_CONFIG
-         
-         # Bersihkan dulu sisa config LTO bawaan agar tidak bentrok
-         sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' $TARGET_CONFIG || true
-         sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' $TARGET_CONFIG || true
-         sed -i 's/CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/g' $TARGET_CONFIG || true
-         sed -i 's/CONFIG_LTO_NONE=.*/# CONFIG_LTO_NONE is not set/g' $TARGET_CONFIG || true
-         if [ "$SELECTED_LTO" = "enable" ]; then
-             echo "Mengaktifkan Full LTO Clang..."
-             echo "CONFIG_LTO=y" >> $TARGET_CONFIG
-             echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
-         elif [ "$SELECTED_LTO" = "thinlto" ]; then
-             echo "Mengaktifkan ThinLTO Clang..."
-             echo "CONFIG_LTO=y" >> $TARGET_CONFIG
-             echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
-             echo "CONFIG_THINLTO=y" >> $TARGET_CONFIG
-         else
-             echo "Menonaktifkan LTO (LTO None)..."
+         if [ "${{ inputs.disable-lto }}" = "true" ]; then
+             sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' $TARGET_CONFIG || true
+             sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' $TARGET_CONFIG || true
              echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
-
+         echo "Mengonfigurasi Frekuensi GPU..."
+         MIN_HZ=$(($(echo ${{ inputs.gpu_min_clock }}) * 1000000))
+         MAX_HZ=$(($(echo ${{ inputs.gpu_max_clock }}) * 1000000))
+         TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
+         if [ -f "$TARGET_DTSI" ]; then
+             sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
+             sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/g" $TARGET_DTSI || true
+         else
+             find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
+         fi
+         
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-         else
-            # AUTO REPAIR KSU MODE FALSE JIKA DIPILIH
-            if [ ! -d "drivers/kernelsu" ]; then
-               mkdir -p drivers/kernelsu
-               touch drivers/kernelsu/Kconfig
-               echo 'obj-y += dummy.o' > drivers/kernelsu/Makefile
-               touch drivers/kernelsu/dummy.c
-            fi
          fi
-
-         # FIX TRACEPOINT SCHED NR_CPUS ERROR
-         echo "Menjinakkan eror pelacakan beban sched NR_CPUS..."
-         sed -i 's/#error "Unsupported NR_CPUS for lb tracepoint."/\/\/ Menghindari perangkap NR_CPUS/g' include/trace/events/sched.h || true
-
-         # ================= INJEKSI FIX BROKEN PIPE UNTUK CLANG 12-13 =================
-         echo "Menyuntikkan perbaikan macro string asm vgettimeofday..."
-         find . -name "vgettimeofday.c" -exec sed -i 's/explicit "cc"/:"cc"/g' {} + || true
-
-         echo "Menjinakkan berkas Makefile VDSO dari opsi no-integrated-as..."
+         echo "Menjinakkan Makefile VDSO secara adaptif..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
-             if [ "${{ inputs.compiler }}" = "aosp-clang" ] && { [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; }; then
+             if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ] || [ "${{ inputs.compiler }}" = "sdclang" ]; then
                  sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
                  sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
                  sed -i '/cc1as/d' $VDSO_MAKEFILE || true
              fi
          fi
-         # ==============================================================================
-
          sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
          echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
-
     - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
-         
          # MENYELURUS: Pastikan variabel lokal kernel dioper langsung saat 'make' dieksekusi agar nempel permanen di biner
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project_build"
@@ -317,18 +278,16 @@ jobs:
          # SOLUSI NAMA DOBEL: Dikosongkan agar patuh pada konfigurasi Pro Configuration Engine sebelumnya
          export LOCALVERSION=""
          
-         # DETEKSI OTOMATIS IAS BERDASARKAN COMPILER DEMI KEAMANAN STRUKTUR ASSEMBLY
-         if [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
-             echo "Menggunakan Integrated Assembler (LLVM_IAS=1) untuk compiler modern."
+         # AUTO-SELECT DETECTOR ENGINE: Menentukan nilai IAS dari drop-down UI GitHub
+         SELECTED_COMPILER="${{ inputs.compiler }}"
+         echo "Compiler yang dipilih di UI: $SELECTED_COMPILER"
+         
+         if [ "$SELECTED_COMPILER" = "weebx-clang" ] || [ "$SELECTED_COMPILER" = "proton-clang" ]; then
+             echo "Memicu Integrated Assembler (LLVM_IAS=1) untuk compiler modern..."
              USE_IAS=1
          else
-             if [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
-                 echo "Mengaktifkan mode penyesuaian khusus (LLVM_IAS=0) demi stabilitas Clang Lama."
-                 USE_IAS=0
-             else
-                 echo "Menggunakan LLVM_IAS=1 untuk AOSP Clang modern."
-                 USE_IAS=1
-             fi
+             echo "Memicu GCC External Assembler (LLVM_IAS=0) untuk mencegah Broken Pipe..."
+             USE_IAS=0
          fi
          
          rm -rf ../out && mkdir -p ../out
@@ -353,7 +312,6 @@ jobs:
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
-              GCC_TOOLCHAIN=$HOME/gcc-64 \
               KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
@@ -363,62 +321,61 @@ jobs:
              exit 1
          fi
          
-    - name: Mengumpulkan Biner Mentah Kernel (No ZIP / Mentahan)
+    - name: Smart Packaging (SAFE EXTRACTION - MULTI PATH DETECTOR)
       run: |
-          mkdir -p $GITHUB_WORKSPACE/kernel_binaries
+          rm -f *.zip
+          git clone --depth=1 ${{ inputs.AK3 }} AnyKernel3
+          rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
           
-          # 1. Tentukan variabel jalur pencarian biner utama
+          [ -f AnyKernel3/anykernel.sh ] && sed -i "s/kernel.string=.*/kernel.string=${{ inputs.zip_name }}/g" AnyKernel3/anykernel.sh || true
+          
+          # Tentukan variabel jalur pencarian (Lokasi Luar, Lokasi Internal, Lokasi Sub-Out)
           BIN_DIR=""
           if [ -f "../out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "../out/arch/arm64/boot/Image.gz" ]; then
               BIN_DIR="../out/arch/arm64/boot"
+              echo "Biner ditemukan di Jalur Luar (../out)"
           elif [ -f "arch/arm64/boot/Image.gz-dtb" ] || [ -f "arch/arm64/boot/Image.gz" ]; then
               BIN_DIR="arch/arm64/boot"
+              echo "Biner ditemukan di Jalur Internal (kernel-dir/arch)"
           elif [ -f "out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "out/arch/arm64/boot/Image.gz" ]; then
               BIN_DIR="out/arch/arm64/boot"
+              echo "Biner ditemukan di Jalur Sub-Out (kernel-dir/out)"
           fi
-
-          # 2. Proses Auto-Jahit Biar Ga Ribet Terpisah
+          # Eksekusi Penyalinan berdasarkan jalur yang valid
           if [ -n "$BIN_DIR" ]; then
               if [ -f "$BIN_DIR/Image.gz-dtb" ]; then
-                  echo "MANTAP: Image.gz-dtb bawaan ditemukan, langsung disalin."
-                  cp $BIN_DIR/Image.gz-dtb $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
+                  echo "Menyalin Image.gz-dtb ke AnyKernel3..."
+                  cp $BIN_DIR/Image.gz-dtb AnyKernel3/Image.gz-dtb
               elif [ -f "$BIN_DIR/Image.gz" ]; then
-                  echo "INFO: Cuma ada Image.gz standar. Memulai proses jahit otomatis dengan DTB..."
-                  
-                  # Cari file DTB spesifik sdm845 / beryllium
-                  DTB_PATH=""
+                  echo "Menyalin Image.gz standar..."
                   if [ -f "$BIN_DIR/dts/qcom/sdm845-beryllium.dtb" ]; then
-                      DTB_PATH="$BIN_DIR/dts/qcom/sdm845-beryllium.dtb"
+                      cat $BIN_DIR/Image.gz $BIN_DIR/dts/qcom/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
                   elif [ -f "$BIN_DIR/dts/sdm845-beryllium.dtb" ]; then
-                      DTB_PATH="$BIN_DIR/dts/sdm845-beryllium.dtb"
-                  fi
-                  
-                  if [ -n "$DTB_PATH" ]; then
-                      # Menjahit Image.gz + DTB menjadi Image.gz-dtb tunggal
-                      cat $BIN_DIR/Image.gz $DTB_PATH > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
-                      echo "SUKSES: File berhasil dijahit menjadi Image.gz-dtb!"
+                      cat $BIN_DIR/Image.gz $BIN_DIR/dts/sdm845-beryllium.dtb > AnyKernel3/Image.gz-dtb
                   else
-                      echo "PERINGATAN: File DTB ga ketemu, terpaksa salin Image.gz apa adanya."
-                      cp $BIN_DIR/Image.gz $GITHUB_WORKSPACE/kernel_binaries/Image.gz
+                      cp $BIN_DIR/Image.gz AnyKernel3/Image.gz
                   fi
+              elif [ -f "$BIN_DIR/Image" ]; then
+                  cp $BIN_DIR/Image AnyKernel3/Image
               fi
           else
-              echo "ERROR: Biner kernel tidak ditemukan!"
+              echo "ERROR: Biner kernel benar-benar gaib! Tidak ditemukan di jalur manapun."
               exit 1
           fi
           
-          # 3. Tetap salin DTBO (opsional, hanya jika kernel lu memproduksinya)
+          # Cari DTBO secara fleksibel
           if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
-              cp ../out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
+              cp ../out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
           elif [ -f "arch/arm64/boot/dtbo.img" ]; then
-              cp arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
+              cp arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
           elif [ -f "out/arch/arm64/boot/dtbo.img" ]; then
-              cp out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
+              cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
           fi
-
-    - name: Upload Biner Mentah Kernel
+          
+          cd AnyKernel3
+          zip -r9 "../${{ inputs.zip_name }}-${{ inputs.rom_type }}.zip" * -x .git README.md
+    - name: Upload Final Build
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
-        path: kernel_binaries/*
-        
+        name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Final-2.8"
+        path: "*.zip"
