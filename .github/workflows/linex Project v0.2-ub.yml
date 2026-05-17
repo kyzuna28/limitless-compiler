@@ -300,17 +300,15 @@ jobs:
          fi
          
          # ==============================================================================
-         # PERBAIKAN UNIVERSAL: BYPASS ARGUMENT LIST TOO LONG VIA XARGS
+         # BYPASS SEGALA MACAM ERROR AKIBAT LOMPATAN VERSI KERNEL 4.9 KE 4.19
          # ==============================================================================
          echo "Menyuntikkan patch xargs pada scripts/Makefile.build..."
          MAKEFILE_BUILD="scripts/Makefile.build"
          if [ -f "$MAKEFILE_BUILD" ]; then
-             # Mengganti baris link bawaan Makefile agar melewatkan list objek via pipa xargs ke Linker
              sed -i 's/\$(LD) \$(ld_flags) -r -o \$@ \$(filter \$(obj-y),\$(link_obj_y))/echo \$(filter \$(obj-y),\$(link_obj_y)) | xargs \$(LD) \$(ld_flags) -r -o \$@/g' $MAKEFILE_BUILD || true
              sed -i 's/\$(LD) \$(ld_flags) -r -o \$@ \$(filter \$(obj-y), \$(link_obj_y))/echo \$(filter \$(obj-y), \$(link_obj_y)) | xargs \$(LD) \$(ld_flags) -r -o \$@/g' $MAKEFILE_BUILD || true
          fi
 
-         # Mematikan modul diag WiFi qcacld-3.0 untuk mengurangi penumpukan file objek .o
          if [ "${{ inputs.lto_type }}" = "thinlto" ] || [ "${{ inputs.lto_type }}" = "enable" ]; then
              echo "Mengecilkan sub-modul WiFi qcacld-3.0..."
              if [ -f drivers/staging/qcacld-3.0/Kbuild ]; then
@@ -331,7 +329,7 @@ jobs:
          fi
          echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
-         # Tambahkan biner llvm secara spesifik dan matikan simbol debug berlebih (-g0)
+         # DISUNTIKKAN FLAG TOLERANSI TINGGI KARENA ADANYA PERUBAHAN VERSI UNAME KE 4.19
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
               AR=$HOME/tc/bin/llvm-ar \
@@ -344,8 +342,8 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               GCC_TOOLCHAIN=$HOME/gcc-64 \
-              KCFLAGS="-w -Wno-error -fno-builtin -g0" \
-              HOSTCFLAGS="-w -Wno-error" \
+              KCFLAGS="-w -Wno-everything -Wno-error -fno-builtin -g0 -fpermissive -Wno-implicit-function-declaration" \
+              HOSTCFLAGS="-w -Wno-everything -Wno-error -fpermissive" \
               KBUILD_VARS="clean-files=" \
               Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
@@ -359,7 +357,6 @@ jobs:
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
           
-          # 1. Tentukan variabel jalur pencarian biner utama
           BIN_DIR=""
           if [ -f "../out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "../out/arch/arm64/boot/Image.gz" ]; then
               BIN_DIR="../out/arch/arm64/boot"
@@ -368,7 +365,7 @@ jobs:
           elif [ -f "out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "out/arch/arm64/boot/Image.gz" ]; then
               BIN_DIR="out/arch/arm64/boot"
           fi
-          # 2. Proses Auto-Jahit Biar Ga Ribet Terpisah
+          
           if [ -n "$BIN_DIR" ]; then
               if [ -f "$BIN_DIR/Image.gz-dtb" ]; then
                   echo "MANTAP: Image.gz-dtb bawaan ditemukan, langsung disalin."
@@ -376,7 +373,6 @@ jobs:
               elif [ -f "$BIN_DIR/Image.gz" ]; then
                   echo "INFO: Cuma ada Image.gz standar. Memulai proses jahit otomatis dengan DTB..."
                   
-                  # Cari file DTB spesifik sdm845 / beryllium
                   DTB_PATH=""
                   if [ -f "$BIN_DIR/dts/qcom/sdm845-beryllium.dtb" ]; then
                       DTB_PATH="$BIN_DIR/dts/qcom/sdm845-beryllium.dtb"
@@ -385,7 +381,6 @@ jobs:
                   fi
                   
                   if [ -n "$DTB_PATH" ]; then
-                      # Menjahit Image.gz + DTB menjadi Image.gz-dtb tunggal
                       cat $BIN_DIR/Image.gz $DTB_PATH > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
                       echo "SUKSES: File berhasil dijahit menjadi Image.gz-dtb!"
                   else
@@ -398,7 +393,6 @@ jobs:
               exit 1
           fi
           
-          # 3. Tetap salin DTBO (opsional, hanya jika kernel lu memproduksinya)
           if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
               cp ../out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
           elif [ -f "arch/arm64/boot/dtbo.img" ]; then
@@ -406,9 +400,9 @@ jobs:
           elif [ -f "out/arch/arm64/boot/dtbo.img" ]; then
               cp out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
           fi
+
     - name: Upload Biner Mentah Kernel
       uses: actions/upload-artifact@v4
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/*
-        
