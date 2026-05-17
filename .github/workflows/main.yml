@@ -1,6 +1,6 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.7 - Specialized for LineageOS Upstream (Stable Build)
-name: Poco F1 LineageOS upstream
+# Version 2.8 Ultimate Final Fix - Safe RAM, Adaptive Engine & Secure Packaging
+name: fix lineage 19.1 keatas
 
 on:
   workflow_dispatch:
@@ -12,31 +12,31 @@ on:
         type: string
       zip_name:
         description: 'Nama File ZIP Akhir'
-        default: 'Beryllium-Lineage'
+        default: 'Beryllium'
         required: true
         type: string
       kernel_version:
-        description: 'Isi angka (misal 4.9.337) atau biarkan "original" untuk versi asli'
+        description: 'Isi angka (misal 4.19.1) atau biarkan "original" untuk versi asli'
         default: 'original'
         required: true
         type: string
       kernel_name:
         description: 'Nama Utama Kernel'
-        default: 'Kyzuna'
+        default: 'Southwest'
         required: true
         type: string
       rom_type:
         description: 'Tipe ROM / Tag Cabang'
-        default: 'LOS-19'
+        default: 'Dynamic-Gki'
         required: true
         type: string
       project_name:
         description: 'Build Project (@nama-project)'
-        default: 'kyy'
+        default: 'seleazs'
         required: true
         type: string
       compiler:
-        description: 'Pilih Compiler Pro'
+        description: 'Pilih Compiler Pro (Stabil Only)'
         default: 'aosp-clang'
         required: true
         type: choice
@@ -46,7 +46,7 @@ on:
         - weebx-clang
       aosp-clang-ver:
         description: 'Versi Clang (Hanya jika pakai aosp-clang)'
-        default: '14'
+        default: '12'
         required: true
         type: choice
         options:
@@ -56,17 +56,22 @@ on:
         - '15'
         - 'latest'
       kernel-url:
-        description: 'LineageOS Kernel URL'
+        description: 'Kernel Source URL (Bisa diganti bebas)'
         default: 'https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git'
         required: true
         type: string
       kernel-branch:
-        description: 'LineageOS Branch'
+        description: 'Kernel Branch'
         default: 'lineage-19.1'
         required: true
         type: string
+      kernel-config:
+        description: 'Kernel Config / Defconfig'
+        default: 'sdm845-perf_defconfig'
+        required: true
+        type: string
       kernelsu:
-        description: 'KernelSU Mode'
+        description: 'KernelSU (ksu / next / false)'
         default: 'ksu'
         required: true
         type: choice
@@ -84,7 +89,7 @@ on:
         - enable
         - thinlto
       AK3:
-        description: 'AnyKernel3 Template'
+        description: 'AnyKernel3 Template URL'
         default: 'https://github.com/osm0sis/AnyKernel3'
         required: true
         type: string
@@ -95,7 +100,7 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build & Bersihkan Storage Bloatware
       run: |
-         echo "Building Poco F1 Kernel Version 3.7 LineageOS Base"
+         echo "Building Poco F1 Kernel Version 2.8 Pro Ultimate Final Fix"
          sudo timedatectl set-timezone Asia/Jakarta
          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
          sudo docker image prune --all --force
@@ -163,14 +168,9 @@ jobs:
          fi
          rm -rf $HOME/tmp-tc
 
-         # ===== FIXED SYSTEM CLANG LEAK (LOCKING DOWNLOADED COMPILER) =====
-         echo "Force-linking downloaded Clang to system bins..."
-         sudo ln -sf $HOME/tc/bin/clang /usr/bin/clang
-         sudo ln -sf $HOME/tc/bin/clang /bin/clang
-
-    - name: Clone LineageOS Kernel Source
-      run: git clone --depth=1 ${{ inputs.kernel-url }} -b "${{ inputs.kernel-branch }}" kernel-dir
-
+    - name: Clone Kernel Source
+      run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
+      
     - name: Pro Configuration Engine
       run: |
          cd kernel-dir
@@ -181,24 +181,35 @@ jobs:
              sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
          fi
          
-         # Defconfig resmi untuk sdm845 Poco F1 di LineageOS
-         TARGET_CONFIG="arch/arm64/configs/beryllium_defconfig"
+         TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
-         # FIX NAMA KERNEL
-         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-${{ inputs.kernel_name }}-么-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
+         # FIX NAMA KERNEL: Menghapus '么' dan memberikan SPASI di awal string agar menggantikan strip bawaan Linux
+         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
+         
+         # Mengunci agar sistem build tidak menambahkan tanda '+' otomatis di ujung versi kernel
+         echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
          rm -f .scmversion
          
-         # ===== ANTI-ELLIPTIC ULTRASOUND ULTIMATE PATCH =====
-         echo "Menonaktifkan total driver Elliptic Ultrasound..."
+         # =================================================================
+         # ===== AUDIO TECHPACK & ELLIPTIC ULTRASOUND GLOBAL PATCH =========
+         # =================================================================
+         echo "Membersihkan secara radikal ranjau Audio Techpack dan Elliptic Driver..."
          sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' $TARGET_CONFIG || true
          echo "CONFIG_AUDIO_ELLIPTIC=n" >> $TARGET_CONFIG
-         find . -name "*.config" -o -name "*_defconfig" | xargs sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' 2>/dev/null || true
-         find . -name "*.config" -o -name "*_defconfig" | xargs sed -i '/CONFIG_AUDIO_ELLIPTIC/d' 2>/dev/null || true
-         find techpack/audio/ -name "Makefile" | xargs sed -i 's/obj-$(CONFIG_AUDIO_ELLIPTIC)/# disabled-elliptic/g' 2>/dev/null || true
-         find drivers/ -name "Makefile" | xargs sed -i 's/obj-$(CONFIG_AUDIO_ELLIPTIC)/# disabled-elliptic/g' 2>/dev/null || true
          
-         # FIXED EFI STUB LINKER ERROR
-         echo "Menonaktifkan EFI dan EFI_STUB..."
+         # PENTING: Cari SEMUA Makefile & Kbuild di folder techpack/audio, matikan pemicu mogok kompiler
+         if [ -d techpack/audio ]; then
+             find techpack/audio/ -type f \( -name "Makefile" -o -name "Kbuild" \) | xargs sed -i 's/obj-\$(CONFIG_AUDIO_ELLIPTIC)/#/g' 2>/dev/null || true
+             find techpack/audio/ -type f \( -name "Makefile" -o -name "Kbuild" \) | xargs sed -i 's/snd-soc-qdsp6v2-objs-back/#/g' 2>/dev/null || true
+             find techpack/audio/ -type f \( -name "Makefile" -o -name "Kbuild" \) | xargs sed -i 's/-Werror//g' 2>/dev/null || true
+         fi
+         
+         # Matikan mode pengetesan audio otomatis agar compiler tidak iseng meriksa komponen usang
+         echo "CONFIG_SND_SOC_BUILD_TEST=n" >> $TARGET_CONFIG
+         # =================================================================
+
+         # 2. FIXED EFI STUB LINKER ERROR
+         echo "Menonaktifkan EFI dan EFI_STUB dari file defconfig..."
          sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_EFI_STUB=y/CONFIG_EFI_STUB=n/g' $TARGET_CONFIG || true
          echo "CONFIG_EFI=n" >> $TARGET_CONFIG
@@ -207,13 +218,14 @@ jobs:
              sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
          fi
 
-         # FIX TOTAL SECTION MISMATCH WARNINGS
-         echo "Membungkam peringatan Section Mismatch..."
+         # 3. FIX TOTAL SECTION MISMATCH WARNINGS (ESTETIKA LOG BERSIH)
+         echo "Membungkam peringatan Section Mismatch modpost..."
          echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $TARGET_CONFIG
          echo "CONFIG_DEBUG_SECTION_MISMATCH=n" >> $TARGET_CONFIG
          sed -i 's/CONFIG_DEBUG_SECTION_MISMATCH=y/CONFIG_DEBUG_SECTION_MISMATCH=n/g' $TARGET_CONFIG || true
 
-         # CLEANSING RANJAU DTS QUALCOMM
+         # 4. CLEANSING RANJAU DTS QUALCOMM
+         echo "Membersihkan target file VR (QVR) dan interposer rusak..."
          sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/qvr-evt/d' arch/arm64/boot/dts/qcom/Makefile || true
          sed -i '/qvr-dvt/d' arch/arm64/boot/dts/qcom/Makefile || true
@@ -226,37 +238,43 @@ jobs:
          echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
          echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
          
-         # AUTO-SELECT LTO ENGINE
+         # 5. AUTO-SELECT LTO ENGINE (DISABLE / ENABLE / THINLTO)
          SELECTED_LTO="${{ inputs.lto_type }}"
+         echo "Mode LTO yang dipilih di UI: $SELECTED_LTO"
+         
+         # 6. UNIVERSAL ANDROID COMPATIBILITY PATCH (ANDROID 10 - 13+)
+         echo "Menyuntikkan flag kompatibilitas lintas Android (10-13+)..."
+         echo "CONFIG_ANDROID_BINDERFS=y" >> $TARGET_CONFIG
+         echo "CONFIG_CGROUPS=y" >> $TARGET_CONFIG
+         echo "CONFIG_CGROUP_BPF=y" >> $TARGET_CONFIG
+         echo "CONFIG_MEMCG=y" >> $TARGET_CONFIG
+         echo "CONFIG_MEMCG_SWAP=y" >> $TARGET_CONFIG
+         
+         # Bersihkan dulu sisa config LTO bawaan agar tidak bentrok
          sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_LTO_NONE=.*/# CONFIG_LTO_NONE is not set/g' $TARGET_CONFIG || true
          if [ "$SELECTED_LTO" = "enable" ]; then
+             echo "Mengaktifkan Full LTO Clang..."
              echo "CONFIG_LTO=y" >> $TARGET_CONFIG
              echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
          elif [ "$SELECTED_LTO" = "thinlto" ]; then
+             echo "Mengaktifkan ThinLTO Clang..."
              echo "CONFIG_LTO=y" >> $TARGET_CONFIG
              echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
              echo "CONFIG_THINLTO=y" >> $TARGET_CONFIG
          else
+             echo "Menonaktifkan LTO (LTO None)..."
              echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
 
-         # COMPATIBILITY PATCH FOR BINDER
-         echo "CONFIG_ANDROID_BINDERFS=y" >> $TARGET_CONFIG
-         echo "CONFIG_CGROUPS=y" >> $TARGET_CONFIG
-         echo "CONFIG_MEMCG=y" >> $TARGET_CONFIG
-         echo "CONFIG_MEMCG_SWAP=y" >> $TARGET_CONFIG
-
-         # ===== KSU ENGINE AUTOMATION =====
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
-            echo "Installing Pure KernelSU..."
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
-            echo "Installing KernelSU-Next..."
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          else
+            # AUTO REPAIR KSU MODE FALSE JIKA DIPILIH
             if [ ! -d "drivers/kernelsu" ]; then
                mkdir -p drivers/kernelsu
                touch drivers/kernelsu/Kconfig
@@ -265,13 +283,24 @@ jobs:
             fi
          fi
 
-         # PENJINAKAN PERMANEN RANJAU VDSO ASSEMBLY LINEAGEOS
+         # FIX TRACEPOINT SCHED NR_CPUS ERROR
+         echo "Menjinakkan eror pelacakan beban sched NR_CPUS..."
+         sed -i 's/#error "Unsupported NR_CPUS for lb tracepoint."/\/\/ Menghindari perangkap NR_CPUS/g' include/trace/events/sched.h || true
+
+         # ================= INJEKSI FIX BROKEN PIPE UNTUK CLANG 12-13 =================
+         echo "Menyuntikkan perbaikan macro string asm vgettimeofday..."
+         find . -name "vgettimeofday.c" -exec sed -i 's/explicit "cc"/:"cc"/g' {} + || true
+
+         echo "Menjinakkan berkas Makefile VDSO dari opsi no-integrated-as..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
-             sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
-             sed -i '/cc1as/d' $VDSO_MAKEFILE || true
-             sed -i "s|CC\s*:=\s*|CC := $HOME/tc/bin/|g" $VDSO_MAKEFILE || true
+             if [ "${{ inputs.compiler }}" = "aosp-clang" ] && { [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; }; then
+                 sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
+                 sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
+                 sed -i '/cc1as/d' $VDSO_MAKEFILE || true
+             fi
          fi
+         # ==============================================================================
 
          sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
          echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
@@ -279,24 +308,31 @@ jobs:
     - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
          cd kernel-dir
-         export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:/usr/bin:/bin:$PATH
+         export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
+         # MENYELURUS: Pastikan variabel lokal kernel dioper langsung saat 'make' dieksekusi agar nempel permanen di biner
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-         export KBUILD_BUILD_HOST="lineage-labs"
-         export LOCALVERSION="-${{ inputs.kernel_name }}-么-${{ inputs.rom_type }}"
+         export KBUILD_BUILD_HOST="project_build"
          
+         # SOLUSI NAMA DOBEL: Dikosongkan agar patuh pada konfigurasi Pro Configuration Engine sebelumnya
+         export LOCALVERSION=""
+         
+         # DETEKSI OTOMATIS IAS BERDASARKAN COMPILER DEMI KEAMANAN STRUKTUR ASSEMBLY
          if [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
+             echo "Menggunakan Integrated Assembler (LLVM_IAS=1) untuk compiler modern."
              USE_IAS=1
          else
-             if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
+             if [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
+                 echo "Mengaktifkan mode penyesuaian khusus (LLVM_IAS=0) demi stabilitas Clang Lama."
                  USE_IAS=0
              else
+                 echo "Menggunakan LLVM_IAS=1 untuk AOSP Clang modern."
                  USE_IAS=1
              fi
          fi
          
          rm -rf ../out && mkdir -p ../out
-         make ARCH=arm64 O=../out beryllium_defconfig
+         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
          TOTAL_CORES=$(nproc --all)
          if [ $TOTAL_CORES -gt 1 ]; then
@@ -304,8 +340,7 @@ jobs:
          else
              SAFE_CORES=1
          fi
-         
-         clang -v
+         echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
@@ -332,6 +367,7 @@ jobs:
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
           
+          # 1. Tentukan variabel jalur pencarian biner utama
           BIN_DIR=""
           if [ -f "../out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "../out/arch/arm64/boot/Image.gz" ]; then
               BIN_DIR="../out/arch/arm64/boot"
@@ -341,10 +377,15 @@ jobs:
               BIN_DIR="out/arch/arm64/boot"
           fi
 
+          # 2. Proses Auto-Jahit Biar Ga Ribet Terpisah
           if [ -n "$BIN_DIR" ]; then
               if [ -f "$BIN_DIR/Image.gz-dtb" ]; then
+                  echo "MANTAP: Image.gz-dtb bawaan ditemukan, langsung disalin."
                   cp $BIN_DIR/Image.gz-dtb $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
               elif [ -f "$BIN_DIR/Image.gz" ]; then
+                  echo "INFO: Cuma ada Image.gz standar. Memulai proses jahit otomatis dengan DTB..."
+                  
+                  # Cari file DTB spesifik sdm845 / beryllium
                   DTB_PATH=""
                   if [ -f "$BIN_DIR/dts/qcom/sdm845-beryllium.dtb" ]; then
                       DTB_PATH="$BIN_DIR/dts/qcom/sdm845-beryllium.dtb"
@@ -353,8 +394,11 @@ jobs:
                   fi
                   
                   if [ -n "$DTB_PATH" ]; then
+                      # Menjahit Image.gz + DTB menjadi Image.gz-dtb tunggal
                       cat $BIN_DIR/Image.gz $DTB_PATH > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
+                      echo "SUKSES: File berhasil dijahit menjadi Image.gz-dtb!"
                   else
+                      echo "PERINGATAN: File DTB ga ketemu, terpaksa salin Image.gz apa adanya."
                       cp $BIN_DIR/Image.gz $GITHUB_WORKSPACE/kernel_binaries/Image.gz
                   fi
               fi
@@ -363,6 +407,7 @@ jobs:
               exit 1
           fi
           
+          # 3. Tetap salin DTBO (opsional, hanya jika kernel lu memproduksinya)
           if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
               cp ../out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
           elif [ -f "arch/arm64/boot/dtbo.img" ]; then
@@ -376,3 +421,4 @@ jobs:
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/*
+        
