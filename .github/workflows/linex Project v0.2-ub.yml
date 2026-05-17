@@ -194,11 +194,10 @@ jobs:
          rm -f .scmversion
          rm -f out/.scmversion
          
-         # BYPASS SCRIPT LOCALVERSION: Paksa injeksi tanda '-dirty' di akar skrip bawaan kernel agar karakter unik/Jepang aman dibaca Android
+         # BYPASS SCRIPT LOCALVERSION: Bersihkan sistem deteksi lokal dan paksa deteksi tanda '-dirty' secara lurus
          if [ -f scripts/setlocalversion ]; then
              echo "Memaksa skrip penamaan internal untuk mengizinkan penulisan kustom..."
              sed -i 's/scm_version_string=""/scm_version_string="-dirty"/g' scripts/setlocalversion || true
-             sed -i 's/res="$res${localver}"/res="$res-dirty"/g' scripts/setlocalversion || true
          fi
          
          # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
@@ -330,7 +329,9 @@ jobs:
          fi
          echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
-         # FIX TOTAL: Menggunakan akhiran minus pada LOCALVERSION agar karakter non-ASCII/Jepang aman dijahit bersama hash Git digital
+         # SUNTIKAN FILTRASI: Paksa hapus spasi dari rom_type demi kenyamanan framework Android
+         CLEAN_ROM_TYPE=$(echo "${{ inputs.rom_type }}" | tr -d ' ')
+         
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
               AR=llvm-ar \
@@ -343,7 +344,7 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               GCC_TOOLCHAIN=$HOME/gcc-64 \
-              LOCALVERSION="-${{ inputs.kernel_name }}-${{ inputs.rom_type }}-" \
+              LOCALVERSION="-${{ inputs.kernel_name }}-${CLEAN_ROM_TYPE}" \
               KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
@@ -406,4 +407,4 @@ jobs:
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/*
-      
+        
