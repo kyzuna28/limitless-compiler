@@ -183,10 +183,13 @@ jobs:
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
-         # FIX NAMA KERNEL: Injeksi config lokal dengan benar agar terbaca utuh di framework Android
-         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-${{ inputs.kernel_name }}-么-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
+         # FIX NAMA KERNEL: Menggunakan SPASI di awal agar tidak memicu tanda strip otomatis dari Linux
+         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
          
-         # HAPUS perintah 'export LOCALVERSION=""' lama agar tidak menimpa / membatalkan string nama kernel saat proses kompilasi berlangsung
+         # Mengunci agar sistem build tidak menambahkan tanda '+' otomatis di ujung nama
+         echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
+         
+         # Hapus perintah penimpa versi git lama
          rm -f .scmversion
          
          # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
@@ -208,13 +211,11 @@ jobs:
          if [ -f drivers/firmware/Makefile ]; then
              sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
          fi
-
          # 3. FIX TOTAL SECTION MISMATCH WARNINGS (ESTETIKA LOG BERSIH)
          echo "Membungkam peringatan Section Mismatch modpost..."
          echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $TARGET_CONFIG
          echo "CONFIG_DEBUG_SECTION_MISMATCH=n" >> $TARGET_CONFIG
          sed -i 's/CONFIG_DEBUG_SECTION_MISMATCH=y/CONFIG_DEBUG_SECTION_MISMATCH=n/g' $TARGET_CONFIG || true
-
          # 4. CLEANSING RANJAU DTS QUALCOMM
          echo "Membersihkan target file VR (QVR) dan interposer rusak..."
          sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
@@ -259,17 +260,14 @@ jobs:
              echo "Menonaktifkan LTO (LTO None)..."
              echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
-
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
-
          # ================= INJEKSI FIX BROKEN PIPE UNTUK CLANG 12-13 =================
          echo "Menyuntikkan perbaikan macro string asm vgettimeofday..."
          find . -name "vgettimeofday.c" -exec sed -i 's/explicit "cc"/:"cc"/g' {} + || true
-
          echo "Menjinakkan berkas Makefile VDSO dari opsi no-integrated-as..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
@@ -280,7 +278,6 @@ jobs:
              fi
          fi
          # ==============================================================================
-
          sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
          echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
 
@@ -289,10 +286,11 @@ jobs:
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
-         # MENYELURUS: Pastikan variabel lokal kernel dioper langsung saat 'make' dieksekusi agar nempel permanen di biner
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
-         export LOCALVERSION="-${{ inputs.kernel_name }}-么-${{ inputs.rom_type }}"
+         
+         # SOLUSI: Mengosongkan LOCALVERSION agar tidak menimpa dan mendobelkan nama kernel
+         export LOCALVERSION=""
          
          # DETEKSI OTOMATIS IAS BERDASARKAN COMPILER DEMI KEAMANAN STRUKTUR ASSEMBLY
          if [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
@@ -319,7 +317,9 @@ jobs:
          fi
          echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
+         # Menambahkan LOCALVERSION="" di argumen perintah make untuk mengunci penamaan tunggal
          make -j$SAFE_CORES ARCH=arm64 O=../out \
+              LOCALVERSION="" \
               CC=clang \
               AR=llvm-ar \
               NM=llvm-nm \
