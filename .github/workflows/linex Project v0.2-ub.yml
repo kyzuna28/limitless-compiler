@@ -1,5 +1,5 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.0 Ultimate Final Fix - Spoofer Engine & Secure Packaging
+# Version 3.1 Ultimate Final Fix - Anti-Interactive Kconfig Engine
 name: khusus uname
 
 on:
@@ -100,7 +100,7 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build & Bersihkan Storage Bloatware
       run: |
-         echo "Building Poco F1 Kernel Version 3.0 Pro Ultimate Final Fix"
+         echo "Building Poco F1 Kernel Version 3.1 Pro Ultimate Final Fix"
          sudo timedatectl set-timezone Asia/Jakarta
          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
          sudo docker image prune --all --force
@@ -189,7 +189,7 @@ jobs:
          rm -f .scmversion
          
          # ==============================================================================
-         # ANTI CRASH JALUR MANIPULASI 4.19 (WIREGUARD, ADRENO UAPI, SDFAT, & DRIVER WLAN)
+         # ANTI CRASH JALUR MANIPULASI 4.19 (WIREGUARD, ADRENO UAPI, SDFAT, DRIVER WLAN)
          # ==============================================================================
          echo "Menjinakkan Wireguard pemicu error biner ktime (.tv64)..."
          sed -i 's/CONFIG_WIREGUARD=y/# CONFIG_WIREGUARD is not set/g' $TARGET_CONFIG || true
@@ -214,20 +214,24 @@ jobs:
          fi
 
          echo "Menyuntikkan WLAN Version Spoofer Engine (Memaksa qcacld-3.0 mengira Linux 4.9)..."
-         # Teknik Spoofer: Memotong isi file penentu versi di sistem WLAN Qualcomm agar mengunci ke versi 4.9.0
          if [ -f "drivers/staging/qcacld-3.0/Kbuild" ]; then
              sed -i 's/LINUX_VERSION_CODE/264448/g' drivers/staging/qcacld-3.0/Kbuild || true
          fi
-         # Melakukan override menyeluruh terhadap deteksi compiler pada file internal wifi host cmn
          find drivers/staging/qcacld-3.0/ -type f -name "*.h" -exec sed -i 's/LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)/0/g' {} + || true
          find drivers/staging/qcacld-3.0/ -type f -name "*.h" -exec sed -i 's/LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)/0/g' {} + || true
          find drivers/staging/qcacld-3.0/ -type f -name "*.c" -exec sed -i 's/LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)/0/g' {} + || true
          find drivers/staging/qcacld-3.0/ -type f -name "*.c" -exec sed -i 's/LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)/0/g' {} + || true
-         # Fix spesifik ranjau task_stack.h pada i_qdf_timer.h
          TIMER_WIFI_H="drivers/staging/qca-wifi-host-cmn/qdf/linux/src/i_qdf_timer.h"
          if [ -f "$TIMER_WIFI_H" ]; then
              sed -i 's|#include <linux/sched/task_stack.h>|#include <linux/sched.h>|g' $TIMER_WIFI_H || true
          fi
+
+         # FIXING CPU MASK INTERACTIVE PROMPT CRASH
+         echo "Mengunci setelan CPU_MASK bawaan agar bypass silentoldconfig..."
+         sed -i 's/CONFIG_LITTLE_CPU_MASK=.*/CONFIG_LITTLE_CPU_MASK="0f"/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_BIG_CPU_MASK=.*/CONFIG_BIG_CPU_MASK="f0"/g' $TARGET_CONFIG || true
+         echo 'CONFIG_LITTLE_CPU_MASK="0f"' >> $TARGET_CONFIG
+         echo 'CONFIG_BIG_CPU_MASK="f0"' >> $TARGET_CONFIG
          # ==============================================================================
 
          # 3. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
@@ -247,7 +251,7 @@ jobs:
          echo "CONFIG_EFI=n" >> $TARGET_CONFIG
          echo "CONFIG_EFI_STUB=n" >> $TARGET_CONFIG
          if [ -f drivers/firmware/Makefile ]; then
-             sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
+             sudo sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
          fi
          # 5. FIX TOTAL SECTION MISMATCH WARNINGS (ESTETIKA LOG BERSIH)
          echo "Membungkam peringatan Section Mismatch modpost..."
@@ -280,7 +284,6 @@ jobs:
          echo "CONFIG_MEMCG=y" >> $TARGET_CONFIG
          echo "CONFIG_MEMCG_SWAP=y" >> $TARGET_CONFIG
          
-         # Bersihkan dulu sisa config LTO bawaan agar tidak bentrok
          sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' $TARGET_CONFIG || true
          sed -i 's/CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/g' $TARGET_CONFIG || true
@@ -303,10 +306,8 @@ jobs:
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
-         # ================= INJEKSI FIX BROKEN PIPE UNTUK CLANG 12-13 =================
          echo "Menyuntikkan perbaikan macro string asm vgettimeofday..."
          find . -name "vgettimeofday.c" -exec sed -i 's/explicit "cc"/:"cc"/g' {} + || true
-         echo "Menjinakkan berkas Makefile VDSO dari opsi no-integrated-as..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
              if [ "${{ inputs.compiler }}" = "aosp-clang" ] && { [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; }; then
@@ -315,7 +316,6 @@ jobs:
                  sed -i '/cc1as/d' $VDSO_MAKEFILE || true
              fi
          fi
-         # ==============================================================================
          sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
          echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
          
@@ -329,21 +329,15 @@ jobs:
          export LOCALVERSION=""
          
          if [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
-             echo "Menggunakan Integrated Assembler (LLVM_IAS=1) untuk compiler modern."
              USE_IAS=1
          else
              if [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
-                 echo "Mengaktifkan mode penyesuaian khusus (LLVM_IAS=0) demi stabilitas Clang Lama."
                  USE_IAS=0
              else
-                 echo "Menggunakan LLVM_IAS=1 untuk AOSP Clang modern."
                  USE_IAS=1
              fi
          fi
          
-         # ==============================================================================
-         # BYPASS SEGALA MACAM ERROR AKIBAT LOMPATAN VERSI KERNEL 4.9 KE 4.19
-         # ==============================================================================
          echo "Menyuntikkan patch xargs pada scripts/Makefile.build..."
          MAKEFILE_BUILD="scripts/Makefile.build"
          if [ -f "$MAKEFILE_BUILD" ]; then
@@ -352,16 +346,28 @@ jobs:
          fi
 
          if [ "${{ inputs.lto_type }}" = "thinlto" ] || [ "${{ inputs.lto_type }}" = "enable" ]; then
-             echo "Mengecilkan sub-modul WiFi qcacld-3.0..."
              if [ -f drivers/staging/qcacld-3.0/Kbuild ]; then
                  sed -i 's/CONFIG_QCA_CLD_WLAN_DIAG=y/CONFIG_QCA_CLD_WLAN_DIAG=n/g' drivers/staging/qcacld-3.0/Kbuild || true
                  echo "CONFIG_QCA_CLD_WLAN_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
              fi
          fi
-         # ==============================================================================
 
          rm -rf ../out && mkdir -p ../out
+         
+         # ==============================================================================
+         # FORCING DEFCONFIG & BYPASSING INTERACTIVE OLDCONFIG
+         # ==============================================================================
+         # Langkah 1: Buat file dasar konfigurasi awal
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
+         
+         # Langkah 2: Suntikkan nilai CPU Mask langsung ke biner out/.config agar tidak kosong
+         sed -i 's/CONFIG_LITTLE_CPU_MASK=.*/CONFIG_LITTLE_CPU_MASK="0f"/g' ../out/.config || true
+         sed -i 's/CONFIG_BIG_CPU_MASK=.*/CONFIG_BIG_CPU_MASK="f0"/g' ../out/.config || true
+         
+         # Langkah 3: Eksekusi penguncian otomatis (Bypass Prompt Interaktif)
+         yes "" | make ARCH=arm64 O=../out olddefconfig || true
+         yes "" | make ARCH=arm64 O=../out oldconfig || true
+         # ==============================================================================
          
          TOTAL_CORES=$(nproc --all)
          if [ $TOTAL_CORES -gt 1 ]; then
@@ -369,9 +375,8 @@ jobs:
          else
              SAFE_CORES=1
          fi
-         echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
+         echo "Menggunakan $SAFE_CORES Core demi kestabilan alokasi RAM..."
          
-         # DISUNTIKKAN FLAG TOLERANSI TINGGI KARENA ADANYA PERUBAHAN VERSI UNAME KE 4.19
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
               AR=$HOME/tc/bin/llvm-ar \
@@ -410,11 +415,8 @@ jobs:
           
           if [ -n "$BIN_DIR" ]; then
               if [ -f "$BIN_DIR/Image.gz-dtb" ]; then
-                  echo "MANTAP: Image.gz-dtb bawaan ditemukan, langsung disalin."
                   cp $BIN_DIR/Image.gz-dtb $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
               elif [ -f "$BIN_DIR/Image.gz" ]; then
-                  echo "INFO: Cuma ada Image.gz standar. Memulai proses jahit otomatis dengan DTB..."
-                  
                   DTB_PATH=""
                   if [ -f "$BIN_DIR/dts/qcom/sdm845-beryllium.dtb" ]; then
                       DTB_PATH="$BIN_DIR/dts/qcom/sdm845-beryllium.dtb"
@@ -424,9 +426,7 @@ jobs:
                   
                   if [ -n "$DTB_PATH" ]; then
                       cat $BIN_DIR/Image.gz $DTB_PATH > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
-                      echo "SUKSES: File berhasil dijahit menjadi Image.gz-dtb!"
                   else
-                      echo "PERINGATAN: File DTB ga ketemu, terpaksa salin Image.gz apa adanya."
                       cp $BIN_DIR/Image.gz $GITHUB_WORKSPACE/kernel_binaries/Image.gz
                   fi
               fi
