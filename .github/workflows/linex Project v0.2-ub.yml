@@ -22,12 +22,12 @@ on:
         type: string
       kernel_name:
         description: 'Nama Utama Kernel'
-        default: 'Southwest'
+        default: 'Cip128'
         required: true
         type: string
       rom_type:
         description: 'Tipe ROM / Tag Cabang'
-        default: 'Dynamic-Gki'
+        default: 'Nexus'
         required: true
         type: string
       project_name:
@@ -57,17 +57,17 @@ on:
         - 'latest'
       kernel-url:
         description: 'Kernel Source URL (Bisa diganti bebas)'
-        default: 'https://github.com/LineageOS/android_kernel_xiaomi_sdm845.git'
+        default: 'https://github.com/xiaomi-sdm845-devel/kernel_xiaomi_sdm845.git'
         required: true
         type: string
       kernel-branch:
         description: 'Kernel Branch'
-        default: 'lineage-19.1'
+        default: 'stable/11'
         required: true
         type: string
       kernel-config:
         description: 'Kernel Config / Defconfig'
-        default: 'sdm845-perf_defconfig'
+        default: 'beryllium_defconfig'
         required: true
         type: string
       kernelsu:
@@ -190,12 +190,13 @@ jobs:
          sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=n/g" $TARGET_CONFIG || true
          echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
          
-         # 3. KUNCI TOTAL SCRIPT SETLOCALVERSION (Paling Krusial!)
-         # Kita paksa script ini untuk langsung memuntahkan string kosong agar tidak menggandakan tanda '+' kamu
+         # 3. FIX AMAN: Jinakkan git check tanpa menghapus total fungsi penamaan script bawaan
          if [ -f scripts/setlocalversion ]; then
-             echo '#!/bin/sh' > scripts/setlocalversion
-             echo 'echo ""' >> scripts/setlocalversion
+             sed -i 's/scm_version --short/echo ""/g' scripts/setlocalversion || true
+             sed -i 's/echo "+"/echo ""/g' scripts/setlocalversion || true
          fi
+         
+         # Buat file kosong agar top-level Makefile tidak otomatis menambahkan tanda '+' dirty commit
          echo "" > .scmversion
          
          # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
