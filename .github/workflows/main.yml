@@ -111,7 +111,7 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build & Bersihkan Storage Bloatware
       run: |
-         echo "Building Poco F1 Kernel Version 3.0 Pro Ultimate Final Fix"
+         echo "Building Poco F1 Kernel Version 2.8 Pro Ultimate Final Fix"
          sudo timedatectl set-timezone Asia/Jakarta
          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
          sudo docker image prune --all --force
@@ -357,7 +357,6 @@ jobs:
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
           
-          # 1. Tentukan variabel jalur pencarian biner utama
           BIN_DIR=""
           if [ -f "../out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "../out/arch/arm64/boot/Image.gz" ]; then
               BIN_DIR="../out/arch/arm64/boot"
@@ -367,7 +366,6 @@ jobs:
               BIN_DIR="out/arch/arm64/boot"
           fi
 
-          # 2. Proses Auto-Jahit Biar Ga Ribet Terpisah
           if [ -n "$BIN_DIR" ]; then
               if [ -f "$BIN_DIR/Image.gz-dtb" ]; then
                   echo "MANTAP: Image.gz-dtb bawaan ditemukan, langsung disalin."
@@ -375,7 +373,6 @@ jobs:
               elif [ -f "$BIN_DIR/Image.gz" ]; then
                   echo "INFO: Cuma ada Image.gz standar. Memulai proses jahit otomatis dengan DTB..."
                   
-                  # Cari file DTB spesifik sdm845 / beryllium
                   DTB_PATH=""
                   if [ -f "$BIN_DIR/dts/qcom/sdm845-beryllium.dtb" ]; then
                       DTB_PATH="$BIN_DIR/dts/qcom/sdm845-beryllium.dtb"
@@ -384,7 +381,6 @@ jobs:
                   fi
                   
                   if [ -n "$DTB_PATH" ]; then
-                      # Menjahit Image.gz + DTB menjadi Image.gz-dtb tunggal
                       cat $BIN_DIR/Image.gz $DTB_PATH > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
                       echo "SUKSES: File berhasil dijahit menjadi Image.gz-dtb!"
                   else
@@ -397,7 +393,6 @@ jobs:
               exit 1
           fi
           
-          # 3. Tetap salin DTBO (opsional, hanya jika kernel lu memproduksinya)
           if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
               cp ../out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
           elif [ -f "arch/arm64/boot/dtbo.img" ]; then
@@ -411,3 +406,4 @@ jobs:
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/*
+        
