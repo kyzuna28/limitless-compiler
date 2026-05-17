@@ -173,117 +173,156 @@ jobs:
       
     - name: Pro Configuration Engine
       run: |
-         cd kernel-dir
-         
-         if [ "${{ inputs.kernel_version }}" != "original" ] && [ "${{ inputs.kernel_version }}" != "" ]; then
-             sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
-             sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
-             sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
-         fi
-         
-         TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
-         
-         # FIX NAMA KERNEL: Menghapus spasi aneh dan menyamakan format standar Android
-         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-${{ inputs.kernel_name }}-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
-         
-         # Mengunci agar sistem build tidak menambahkan tanda '+' otomatis di ujung versi kernel
-         sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=n/g" $TARGET_CONFIG || true
-         echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
-         
-         # AMAN: Jangan di-RM (hapus), buat file .scmversion kosong agar script setlocalversion bawaan kernel tidak merusak string
-         echo "" > .scmversion
-         
-         # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
-         echo "Menjinakkan driver Elliptic Ultrasound Techpack..."
-         sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' $TARGET_CONFIG || true
-         echo "CONFIG_AUDIO_ELLIPTIC=n" >> $TARGET_CONFIG
-         
-         if [ -f techpack/audio/asoc/Makefile ]; then
-             sed -i 's/obj-\$(CONFIG_AUDIO_ELLIPTIC).*=.*/# Elliptic disabled/g' techpack/audio/asoc/Makefile || true
-             sed -i 's/snd-soc-qdsp6v2-objs-back.*=.*/# Elliptic back disabled/g' techpack/audio/asoc/Makefile || true
-         fi
-         
-         # 2. FIXED EFI STUB LINKER ERROR
-         echo "Menonaktifkan EFI dan EFI_STUB dari file defconfig..."
-         sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' $TARGET_CONFIG || true
-         sed -i 's/CONFIG_EFI_STUB=y/CONFIG_EFI_STUB=n/g' $TARGET_CONFIG || true
-         echo "CONFIG_EFI=n" >> $TARGET_CONFIG
-         echo "CONFIG_EFI_STUB=n" >> $TARGET_CONFIG
-         if [ -f drivers/firmware/Makefile ]; then
-             sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
-         fi
+        cd kernel-dir
+        
+        if [ "${{ inputs.kernel_version }}" != "original" ] && [ "${{ inputs.kernel_version }}" != "" ]; then
+            sed -i "s/^VERSION =.*/VERSION = $(echo ${{ inputs.kernel_version }} | cut -d. -f1)/" Makefile
+            sed -i "s/^PATCHLEVEL =.*/PATCHLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f2)/" Makefile
+            sed -i "s/^SUBLEVEL =.*/SUBLEVEL = $(echo ${{ inputs.kernel_version }} | cut -d. -f3)/" Makefile
+        fi
+        
+        TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
+        
+        # FIX NAMA KERNEL: Menghapus spasi aneh dan menyamakan format standar Android
+        sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-${{ inputs.kernel_name }}-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
+        
+        # Mengunci agar sistem build tidak menambahkan tanda '+' otomatis di ujung versi kernel
+        sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=n/g" $TARGET_CONFIG || true
+        echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
+        
+        # AMAN: Jangan di-RM (hapus), buat file .scmversion kosong agar script setlocalversion bawaan kernel tidak merusak string
+        echo "" > .scmversion
+        
+        # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
+        echo "Menjinakkan driver Elliptic Ultrasound Techpack..."
+        sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' $TARGET_CONFIG || true
+        echo "CONFIG_AUDIO_ELLIPTIC=n" >> $TARGET_CONFIG
+        
+        if [ -f techpack/audio/asoc/Makefile ]; then
+            sed -i 's/obj-\$(CONFIG_AUDIO_ELLIPTIC).*=.*/# Elliptic disabled/g' techpack/audio/asoc/Makefile || true
+            sed -i 's/snd-soc-qdsp6v2-objs-back.*=.*/# Elliptic back disabled/g' techpack/audio/asoc/Makefile || true
+        fi
+        
+        # 2. FIXED EFI STUB LINKER ERROR
+        echo "Menonaktifkan EFI dan EFI_STUB dari file defconfig..."
+        sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' $TARGET_CONFIG || true
+        sed -i 's/CONFIG_EFI_STUB=y/CONFIG_EFI_STUB=n/g' $TARGET_CONFIG || true
+        echo "CONFIG_EFI=n" >> $TARGET_CONFIG
+        echo "CONFIG_EFI_STUB=n" >> $TARGET_CONFIG
+        if [ -f drivers/firmware/Makefile ]; then
+            sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
+        fi
 
-         # 3. FIX TOTAL SECTION MISMATCH WARNINGS (ESTETIKA LOG BERSIH)
-         echo "Membungkam peringatan Section Mismatch modpost..."
-         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $TARGET_CONFIG
-         echo "CONFIG_DEBUG_SECTION_MISMATCH=n" >> $TARGET_CONFIG
-         sed -i 's/CONFIG_DEBUG_SECTION_MISMATCH=y/CONFIG_DEBUG_SECTION_MISMATCH=n/g' $TARGET_CONFIG || true
+        # 3. FIX TOTAL SECTION MISMATCH WARNINGS (ESTETIKA LOG BERSIH)
+        echo "Membungkam peringatan Section Mismatch modpost..."
+        echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $TARGET_CONFIG
+        echo "CONFIG_DEBUG_SECTION_MISMATCH=n" >> $TARGET_CONFIG
+        sed -i 's/CONFIG_DEBUG_SECTION_MISMATCH=y/CONFIG_DEBUG_SECTION_MISMATCH=n/g' $TARGET_CONFIG || true
 
-         # 4. CLEANSING RANJAU DTS QUALCOMM
-         echo "Membersihkan target file VR (QVR) dan interposer rusak..."
-         sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
-         sed -i '/qvr-evt/d' arch/arm64/boot/dts/qcom/Makefile || true
-         sed -i '/qvr-dvt/d' arch/arm64/boot/dts/qcom/Makefile || true
-         sed -i '/sdm845-interposer/d' arch/arm64/boot/dts/qcom/Makefile || true
-         sed -i 's/CONFIG_USB_CONFIGFS_F_DIAG=y/CONFIG_USB_CONFIGFS_F_DIAG=n/g' $TARGET_CONFIG || true
-         sed -i 's/CONFIG_USB_F_QDSS=y/CONFIG_USB_F_QDSS=n/g' $TARGET_CONFIG || true
-         
-         echo "CONFIG_KALLSYMS=y" >> $TARGET_CONFIG
-         echo "CONFIG_KALLSYMS_ALL=y" >> $TARGET_CONFIG
-         echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
-         echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
-         
-         # 5. AUTO-SELECT LTO ENGINE (DISABLE / ENABLE / THINLTO)
-         SELECTED_LTO="${{ inputs.lto_type }}"
-         echo "Mode LTO yang dipilih di UI: $SELECTED_LTO"
-         
-         # 6. UNIVERSAL ANDROID COMPATIBILITY PATCH (ANDROID 10 - 13+)
-         echo "Menyuntikkan flag kompatibilitas lintas Android (10-13+)..."
-         echo "CONFIG_ANDROID_BINDERFS=y" >> $TARGET_CONFIG
-         echo "CONFIG_CGROUPS=y" >> $TARGET_CONFIG
-         echo "CONFIG_CGROUP_BPF=y" >> $TARGET_CONFIG
-         echo "CONFIG_MEMCG=y" >> $TARGET_CONFIG
-         echo "CONFIG_MEMCG_SWAP=y" >> $TARGET_CONFIG
-         
-         # Bersihkan dulu sisa config LTO bawaan agar tidak bentrok
-         sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' $TARGET_CONFIG || true
-         sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' $TARGET_CONFIG || true
-         sed -i 's/CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/g' $TARGET_CONFIG || true
-         sed -i 's/CONFIG_LTO_NONE=.*/# CONFIG_LTO_NONE is not set/g' $TARGET_CONFIG || true
-         if [ "$SELECTED_LTO" = "enable" ]; then
-             echo "Mengaktifkan Full LTO Clang..."
-             echo "CONFIG_LTO=y" >> $TARGET_CONFIG
-             echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
-         elif [ "$SELECTED_LTO" = "thinlto" ]; then
-             echo "Mengaktifkan ThinLTO Clang..."
-             echo "CONFIG_LTO=y" >> $TARGET_CONFIG
-             echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
-             echo "CONFIG_THINLTO=y" >> $TARGET_CONFIG
-         else
-             echo "Menonaktifkan LTO (LTO None)..."
-             echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
-         fi
+        # 4. CLEANSING RANJAU DTS QUALCOMM
+        echo "Membersihkan target file VR (QVR) dan interposer rusak..."
+        sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
+        sed -i '/qvr-evt/d' arch/arm64/boot/dts/qcom/Makefile || true
+        sed -i '/qvr-dvt/d' arch/arm64/boot/dts/qcom/Makefile || true
+        sed -i '/sdm845-interposer/d' arch/arm64/boot/dts/qcom/Makefile || true
+        sed -i 's/CONFIG_USB_CONFIGFS_F_DIAG=y/CONFIG_USB_CONFIGFS_F_DIAG=n/g' $TARGET_CONFIG || true
+        sed -i 's/CONFIG_USB_F_QDSS=y/CONFIG_USB_F_QDSS=n/g' $TARGET_CONFIG || true
+        
+        echo "CONFIG_KALLSYMS=y" >> $TARGET_CONFIG
+        echo "CONFIG_KALLSYMS_ALL=y" >> $TARGET_CONFIG
+        echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
+        echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
+        
+        # 5. UNIVERSAL ANDROID COMPATIBILITY PATCH (ANDROID 10 - 13+)
+        echo "Menyuntikkan flag kompatibilitas lintas Android (10-13+)..."
+        echo "CONFIG_ANDROID_BINDERFS=y" >> $TARGET_CONFIG
+        echo "CONFIG_CGROUPS=y" >> $TARGET_CONFIG
+        echo "CONFIG_CGROUP_BPF=y" >> $TARGET_CONFIG
+        echo "CONFIG_MEMCG=y" >> $TARGET_CONFIG
+        echo "CONFIG_MEMCG_SWAP=y" >> $TARGET_CONFIG
 
-         if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
-            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
-         elif [ "${{ inputs.kernelsu }}" = "next" ]; then
-            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-         fi
+        # 6. AUTO-SELECT LTO ENGINE (FIXED ORDER LOGIC)
+        SELECTED_LTO="${{ inputs.lto_type }}"
+        echo "Mode LTO yang dipilih di UI: $SELECTED_LTO"
+        
+        # Bersihkan dulu sisa config LTO bawaan pabrik (AGAR TIDAK OVERWRITE HASIL SUNTIKAN)
+        sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' $TARGET_CONFIG || true
+        sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' $TARGET_CONFIG || true
+        sed -i 's/CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/g' $TARGET_CONFIG || true
+        sed -i 's/CONFIG_LTO_NONE=.*/# CONFIG_LTO_NONE is not set/g' $TARGET_CONFIG || true
+        
+        if [ "$SELECTED_LTO" = "enable" ]; then
+            echo "Mengaktifkan Full LTO Clang..."
+            echo "CONFIG_LTO=y" >> $TARGET_CONFIG
+            echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
+        elif [ "$SELECTED_LTO" = "thinlto" ]; then
+            echo "Mengaktifkan ThinLTO Clang..."
+            echo "CONFIG_LTO=y" >> $TARGET_CONFIG
+            echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
+            echo "CONFIG_THINLTO=y" >> $TARGET_CONFIG
+        else
+            echo "Menonaktifkan LTO (LTO None)..."
+            echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
+        fi
 
-         # ================= INJEKSI FIX BROKEN PIPE UNTUK CLANG 12-13 =================
-         echo "Menyuntikkan perbaikan macro string asm vgettimeofday..."
-         find . -name "vgettimeofday.c" -exec sed -i 's/explicit "cc"/:"cc"/g' {} + || true
+        # 7. KERNELSU INJECTION ENGINE
+        if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
+           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+        elif [ "${{ inputs.kernelsu }}" = "next" ]; then
+           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+        fi
 
-         echo "Menjinakkan berkas Makefile VDSO dari opsi no-integrated-as..."
-         VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
-         if [ -f "$VDSO_MAKEFILE" ]; then
-             if [ "${{ inputs.compiler }}" = "aosp-clang" ] && { [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; }; then
-                 sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
-                 sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
-                 sed -i '/cc1as/d' $VDSO_MAKEFILE || true
-             fi
-         fi
-         # ==============================================================================
+        # 8. INJEKSI FIX BROKEN PIPE UNTUK CLANG LAMA
+        echo "Menyuntikkan perbaikan macro string asm vgettimeofday..."
+        find . -name "vgettimeofday.c" -exec sed -i 's/explicit "cc"/:"cc"/g' {} + || true
+
+        echo "Menjinakkan berkas Makefile VDSO dari opsi no-integrated-as..."
+        VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
+        if [ -f "$VDSO_MAKEFILE" ]; then
+            if [ "${{ inputs.compiler }}" = "aosp-clang" ]; then
+                if [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
+                    sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
+                    sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
+                    sed -i '/cc1as/d' $VDSO_MAKEFILE || true
+                fi
+            fi
+        fi
+        
+    - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
+      run: |
+        cd kernel-dir
+        export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
+        
+        # MENYELURUS: Pastikan variabel lokal kernel dioper langsung saat 'make' dieksekusi agar nempel permanen di biner
+        export KBUILD_BUILD_USER="${{ inputs.project_name }}"
+        export KBUILD_BUILD_HOST="project_build"
+        
+        # FIX: Definisikan LOCALVERSION secara tegas mengikuti input workflow agar sinkron dengan defconfig
+        export LOCALVERSION="-${{ inputs.kernel_name }}-${{ inputs.rom_type }}"
+        
+        # DETEKSI OTOMATIS IAS & FLAG ARCHITECTURE BERDASARKAN COMPILER
+        if [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
+            echo "Menggunakan konfigurasi khusus untuk WeebX Clang..."
+            USE_IAS=1
+            EXTRA_KCFLAGS="-march=armv8-a"
+        elif [ "${{ inputs.compiler }}" = "proton-clang" ]; then
+            echo "Menggunakan konfigurasi khusus untuk Proton Clang..."
+            USE_IAS=1
+            EXTRA_KCFLAGS="-march=armv8-a+crypto+rcpc"
+        else
+            if [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
+                echo "Mengaktifkan mode penyesuaian khusus (LLVM_IAS=0) demi stabilitas Clang Lama."
+                USE_IAS=0
+                EXTRA_KCFLAGS="-march=armv8-a"
+            else
+                echo "Menggunakan LLVM_IAS=1 untuk AOSP Clang modern."
+                USE_IAS=1
+                EXTRA_KCFLAGS="-march=armv8-a"
+            fi
+        fi
+        
+        rm -rf ../out && mkdir -p ../out
+        make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
 
          # ================= NUKIR TOTAL PENGECEKAN COMPILER LTO =================
          echo "Menghapus paksa target prepare-compiler-check rewel dari Makefile..."
@@ -293,40 +332,13 @@ jobs:
 
          # ================= FIX QUALCOMM WI-FI ARGUMENT LIST TOO LONG =================
          echo "Mengaktifkan pengaman baris argumen untuk driver Wi-Fi Qualcomm..."
-         echo "CONFIG_WLAN_BUILD_DEBUG_ARG_LIST_TOO_LONG=y" >> $TARGET_CONFIG
+         echo "CONFIG_WLAN_BUILD_DEBUG_ARG_LIST_TOO_LONG=y" >> ../out/.config
          # ==============================================================================
 
-         sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
-         echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
-
-    - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
-      run: |
-         cd kernel-dir
-         export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
-         
-         # MENYELURUS: Pastikan variabel lokal kernel dioper langsung saat 'make' dieksekusi agar nempel permanen di biner
-         export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-         export KBUILD_BUILD_HOST="project_build"
-         
-         # FIX: Definisikan LOCALVERSION secara tegas mengikuti input workflow agar sinkron dengan defconfig
-         export LOCALVERSION="-${{ inputs.kernel_name }}-${{ inputs.rom_type }}"
-         
-         # DETEKSI OTOMATIS IAS BERDASARKAN COMPILER DEMI KEAMANAN STRUKTUR ASSEMBLY
-         if [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
-             echo "Menggunakan Integrated Assembler (LLVM_IAS=1) untuk compiler modern."
-             USE_IAS=1
-         else
-             if [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
-                 echo "Mengaktifkan mode penyesuaian khusus (LLVM_IAS=0) demi stabilitas Clang Lama."
-                 USE_IAS=0
-             else
-                 echo "Menggunakan LLVM_IAS=1 untuk AOSP Clang modern."
-                 USE_IAS=1
-             fi
-         fi
-         
-         rm -rf ../out && mkdir -p ../out
-         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
+         # ================= NONAKTIFKAN LKDTM MEMORY REWEL =================
+         sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' ../out/.config || true
+         echo "CONFIG_LKDTM=n" >> ../out/.config
+         # ==============================================================================
          
          TOTAL_CORES=$(nproc --all)
          if [ $TOTAL_CORES -gt 1 ]; then
@@ -350,7 +362,7 @@ jobs:
               CLANG_TRIPLE=aarch64-linux-gnu- \
               GCC_TOOLCHAIN=$HOME/gcc-64 \
               LDFLAGS="-m aarch64linux" \
-              KCFLAGS="-w -Wno-error -fno-builtin -Wa,-march=armv8-a+sec" \
+              KCFLAGS="-w -Wno-error -fno-builtin $EXTRA_KCFLAGS" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
               
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
