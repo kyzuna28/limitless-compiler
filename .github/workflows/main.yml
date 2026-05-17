@@ -300,8 +300,7 @@ jobs:
       run: |
          cd kernel-dir
          
-         # FIX UTAMA: Menyediakan jalur library LLVM agar ld.gold/ld.lld tidak kehilangan objek shared library .so
-         export LD_LIBRARY_PATH=$HOME/tc/lib:$HOME/tc/lib64:$LD_LIBRARY_PATH
+         # PERBAIKAN: Hapus export LD_LIBRARY_PATH untuk menghindari tabrakan dengan /usr/bin/ld milik Ubuntu
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
          # MENYELURUS: Oper string penamaan ke lingkungan runtime Kbuild agar nempel permanen di biner kernel
@@ -325,9 +324,11 @@ jobs:
              fi
          fi
          
-         # Set up output directory absolut agar tidak membingungkan step pemindahan file
+         # Set up output directory absolut
          rm -rf $GITHUB_WORKSPACE/out && mkdir -p $GITHUB_WORKSPACE/out
-         make ARCH=arm64 O=$GITHUB_WORKSPACE/out ${{ inputs.kernel-config }}
+         
+         # Tambahkan HOSTCC dan HOSTLD khusus untuk pembuatan skrip dasar kconfig agar tidak tabrakan dengan library Clang
+         make ARCH=arm64 O=$GITHUB_WORKSPACE/out ${{ inputs.kernel-config }} HOSTCC=gcc HOSTLD=ld
          
          TOTAL_CORES=$(nproc --all)
          if [ $TOTAL_CORES -gt 1 ]; then
@@ -337,7 +338,7 @@ jobs:
          fi
          echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
-         # FIX LTO: Memaksa menggunakan LD=ld.lld untuk menangani kompilasi LTO modern yang bebas error plugin
+         # FIX LTO & FIX LIBCTF: Menggunakan ld.lld penuh untuk target, dan mengisolasi host tetap menggunakan standar GNU bawaan Ubuntu
          make -j$SAFE_CORES ARCH=arm64 O=$GITHUB_WORKSPACE/out \
               CC=clang \
               LD=ld.lld \
@@ -351,6 +352,8 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               GCC_TOOLCHAIN=$HOME/gcc-64 \
+              HOSTCC=gcc \
+              HOSTLD=ld \
               KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
