@@ -285,6 +285,11 @@ jobs:
          fi
          # ==============================================================================
 
+         # ================= FIX QUALCOMM WI-FI ARGUMENT LIST TOO LONG =================
+         echo "Mengaktifkan pengaman baris argumen untuk driver Wi-Fi Qualcomm..."
+         echo "CONFIG_WLAN_BUILD_DEBUG_ARG_LIST_TOO_LONG=y" >> $TARGET_CONFIG
+         # ==============================================================================
+
          sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
          echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
 
@@ -325,8 +330,9 @@ jobs:
          fi
          echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
-              make -j$SAFE_CORES ARCH=arm64 O=../out \
+         make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
+              LD=ld.lld \
               AR=llvm-ar \
               NM=llvm-nm \
               OBJCOPY=llvm-objcopy \
@@ -337,9 +343,10 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               GCC_TOOLCHAIN=$HOME/gcc-64 \
-              KCFLAGS="-w -Wno-error -fno-builtin -fuse-ld=lld" \
+              LDFLAGS="-m aarch64linux" \
+              KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
-         
+              
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "ERROR: Kompilasi Gagal!"
              tail -n 300 build.log
