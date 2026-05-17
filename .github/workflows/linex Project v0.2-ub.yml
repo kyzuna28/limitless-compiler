@@ -22,12 +22,12 @@ on:
         type: string
       kernel_name:
         description: 'Nama Utama Kernel'
-        default: 'Cip128'
+        default: 'Cip128-St12'
         required: true
         type: string
       rom_type:
         description: 'Tipe ROM / Tag Cabang'
-        default: 'Nexus'
+        default: 'Nexus+'
         required: true
         type: string
       project_name:
@@ -183,20 +183,13 @@ jobs:
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
-         # 1. SET NAMA KERNEL DI DEFCONFIG (Aman, tanda + dari kamu akan dibaca sebagai teks biasa)
+         # FIX SINKRON: Kosongkan defconfig localversion agar tidak terjadi append ganda di biner akhir
          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g" $TARGET_CONFIG || true
          
-         # 2. SUNTIK MATI AUTO LOCALVERSION
-         sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=n/g" $TARGET_CONFIG || true
-         echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
+         # FIX VALIDASI PONSEL: Aktifkan auto localversion agar hash git 'g3e5c9c836683-dirty' terbuat resmi oleh Makefile
+         sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=y/g" $TARGET_CONFIG || true
          
-         # 3. FIX MUTLAK: Potong script setlocalversion agar mutlak memuntahkan string kosong
-         if [ -f scripts/setlocalversion ]; then
-             echo '#!/bin/sh' > scripts/setlocalversion
-             echo 'echo ""' >> scripts/setlocalversion
-             chmod +x scripts/setlocalversion
-         fi
-         echo "" > .scmversion
+         # JANGAN POTONG SCRIPT SETLOCALVERSION - Biarkan script asli bekerja mencari info commit git agar tidak "Unavailable"
          
          # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
          echo "Menjinakkan driver Elliptic Ultrasound Techpack..."
@@ -298,11 +291,8 @@ jobs:
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
-         # MENYELURUS: Pastikan variabel lokal kernel dioper langsung saat 'make' dieksekusi agar nempel permanen di biner
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-         export KBUILD_BUILD_HOST="project_build"
-         
-         # BARIS EXPORT LOCALVERSION SUDAH DIHAPUS DI SINI AGAR TIDAK DOBEL
+         export KBUILD_BUILD_HOST="project_labs"
          
          # DETEKSI OTOMATIS IAS BERDASARKAN COMPILER DEMI KEAMANAN STRUKTUR ASSEMBLY
          if [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
@@ -342,7 +332,7 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               GCC_TOOLCHAIN=$HOME/gcc-64 \
-              LOCALVERSION="-${{ inputs.kernel_name }}-${{ inputs.rom_type }}" \
+              LOCALVERSION=" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}" \
               KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
@@ -356,7 +346,6 @@ jobs:
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
           
-          # 1. Tentukan variabel jalur pencarian biner utama
           BIN_DIR=""
           if [ -f "../out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "../out/arch/arm64/boot/Image.gz" ]; then
               BIN_DIR="../out/arch/arm64/boot"
@@ -366,7 +355,6 @@ jobs:
               BIN_DIR="out/arch/arm64/boot"
           fi
 
-          # 2. Proses Auto-Jahit Biar Ga Ribet Terpisah
           if [ -n "$BIN_DIR" ]; then
               if [ -f "$BIN_DIR/Image.gz-dtb" ]; then
                   echo "MANTAP: Image.gz-dtb bawaan ditemukan, langsung disalin."
@@ -374,7 +362,6 @@ jobs:
               elif [ -f "$BIN_DIR/Image.gz" ]; then
                   echo "INFO: Cuma ada Image.gz standar. Memulai proses jahit otomatis dengan DTB..."
                   
-                  # Cari file DTB spesifik sdm845 / beryllium
                   DTB_PATH=""
                   if [ -f "$BIN_DIR/dts/qcom/sdm845-beryllium.dtb" ]; then
                       DTB_PATH="$BIN_DIR/dts/qcom/sdm845-beryllium.dtb"
@@ -383,7 +370,6 @@ jobs:
                   fi
                   
                   if [ -n "$DTB_PATH" ]; then
-                      # Menjahit Image.gz + DTB menjadi Image.gz-dtb tunggal
                       cat $BIN_DIR/Image.gz $DTB_PATH > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
                       echo "SUKSES: File berhasil dijahit menjadi Image.gz-dtb!"
                   else
@@ -396,7 +382,6 @@ jobs:
               exit 1
           fi
           
-          # 3. Tetap salin DTBO (opsional, hanya jika kernel lu memproduksinya)
           if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
               cp ../out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
           elif [ -f "arch/arm64/boot/dtbo.img" ]; then
