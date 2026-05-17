@@ -1,6 +1,6 @@
 # linex Project - Customized for Poco F1 (beryllium)
 # Version 2.8 Ultimate Final Fix - Safe RAM, Adaptive Engine & Secure Packaging
-name: 2.8 fix tes
+name: 2.8 full lto
 
 on:
   workflow_dispatch:
