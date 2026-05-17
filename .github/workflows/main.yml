@@ -1,6 +1,6 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 3.0.2 Ultimate Final Fix - Safe RAM, Adaptive Engine & Secure Packaging
-name: 3.0 fix thintlto lto
+# Version 3.0.1 Ultimate Final Fix - Safe RAM, Adaptive Engine & Secure Packaging
+name: 3.0 fix name
 
 on:
   workflow_dispatch:
@@ -194,14 +194,14 @@ jobs:
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
-         # FIX NAMA KERNEL: Menghapus '么' dan memberikan SPASI di awal string agar menggantikan strip bawaan Linux
-         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
+         # FIX NAMA KERNEL: Kosongkan isi defconfig localversion dasar agar tidak memicu append ganda
+         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g" $TARGET_CONFIG || true
          
-         # Mengunci agar sistem build tidak menambahkan tanda '+' otomatis di ujung versi kernel
-         echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
+         # FIX VALIDASI PONSEL: Paksa hidup agar hash git otomatis terdeteksi resmi oleh Makefile kbuild
+         sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=y/g" $TARGET_CONFIG || true
          
          # Bersihkan file scmversion bawaan agar string penamaan lokal tidak dipotong sistem git kbuild
-         rm -f .scmversion
+         echo "" > .scmversion
          
          # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
          echo "Menjinakkan driver Elliptic Ultrasound Techpack..."
@@ -299,16 +299,11 @@ jobs:
     - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
          cd kernel-dir
-         
-         # PERBAIKAN: Hapus export LD_LIBRARY_PATH untuk menghindari tabrakan dengan /usr/bin/ld milik Ubuntu
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
          # MENYELURUS: Oper string penamaan ke lingkungan runtime Kbuild agar nempel permanen di biner kernel
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project_labs"
-         
-         # SOLUSI NAMA DOBEL: Dikosongkan agar patuh pada konfigurasi Pro Configuration Engine sebelumnya
-         export LOCALVERSION=""
          
          # DETEKSI OTOMATIS IAS BERDASARKAN COMPILER DEMI KEAMANAN STRUKTUR ASSEMBLY
          if [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
@@ -324,11 +319,8 @@ jobs:
              fi
          fi
          
-         # Set up output directory absolut
-         rm -rf $GITHUB_WORKSPACE/out && mkdir -p $GITHUB_WORKSPACE/out
-         
-         # Tambahkan HOSTCC dan HOSTLD khusus untuk pembuatan skrip dasar kconfig agar tidak tabrakan dengan library Clang
-         make ARCH=arm64 O=$GITHUB_WORKSPACE/out ${{ inputs.kernel-config }} HOSTCC=gcc HOSTLD=ld
+         rm -rf ../out && mkdir -p ../out
+         make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
          TOTAL_CORES=$(nproc --all)
          if [ $TOTAL_CORES -gt 1 ]; then
@@ -338,10 +330,8 @@ jobs:
          fi
          echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
-         # FIX LTO & FIX LIBCTF: Menggunakan ld.lld penuh untuk target, dan mengisolasi host tetap menggunakan standar GNU bawaan Ubuntu
-         make -j$SAFE_CORES ARCH=arm64 O=$GITHUB_WORKSPACE/out \
+         make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
-              LD=ld.lld \
               AR=llvm-ar \
               NM=llvm-nm \
               OBJCOPY=llvm-objcopy \
@@ -352,12 +342,11 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               GCC_TOOLCHAIN=$HOME/gcc-64 \
-              HOSTCC=gcc \
-              HOSTLD=ld \
+              LOCALVERSION="-${{ inputs.kernel_name }}-${{ inputs.rom_type }}" \
               KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
-         if [ ! -f $GITHUB_WORKSPACE/out/arch/arm64/boot/Image ] && [ ! -f $GITHUB_WORKSPACE/out/arch/arm64/boot/Image.gz ] && [ ! -f $GITHUB_WORKSPACE/out/arch/arm64/boot/Image.gz-dtb ]; then
+         if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "ERROR: Kompilasi Gagal!"
              tail -n 300 build.log
              exit 1
@@ -367,17 +356,25 @@ jobs:
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
           
-          # FIX PATH: Menggunakan absolute path workspace yang aman dan pasti ketemu
-          BIN_DIR="$GITHUB_WORKSPACE/out/arch/arm64/boot"
+          # 1. Tentukan variabel jalur pencarian biner utama
+          BIN_DIR=""
+          if [ -f "../out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "../out/arch/arm64/boot/Image.gz" ]; then
+              BIN_DIR="../out/arch/arm64/boot"
+          elif [ -f "arch/arm64/boot/Image.gz-dtb" ] || [ -f "arch/arm64/boot/Image.gz" ]; then
+              BIN_DIR="arch/arm64/boot"
+          elif [ -f "out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "out/arch/arm64/boot/Image.gz" ]; then
+              BIN_DIR="out/arch/arm64/boot"
+          fi
 
-          # Proses Pemindahan / Penjahitan Otomatis DTB
-          if [ -d "$BIN_DIR" ]; then
+          # 2. Proses Auto-Jahit Biar Ga Ribet Terpisah
+          if [ -n "$BIN_DIR" ]; then
               if [ -f "$BIN_DIR/Image.gz-dtb" ]; then
                   echo "MANTAP: Image.gz-dtb bawaan ditemukan, langsung disalin."
                   cp $BIN_DIR/Image.gz-dtb $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
               elif [ -f "$BIN_DIR/Image.gz" ]; then
                   echo "INFO: Cuma ada Image.gz standar. Memulai proses jahit otomatis dengan DTB..."
                   
+                  # Cari file DTB spesifik sdm845 / beryllium
                   DTB_PATH=""
                   if [ -f "$BIN_DIR/dts/qcom/sdm845-beryllium.dtb" ]; then
                       DTB_PATH="$BIN_DIR/dts/qcom/sdm845-beryllium.dtb"
@@ -386,6 +383,7 @@ jobs:
                   fi
                   
                   if [ -n "$DTB_PATH" ]; then
+                      # Menjahit Image.gz + DTB menjadi Image.gz-dtb tunggal
                       cat $BIN_DIR/Image.gz $DTB_PATH > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
                       echo "SUKSES: File berhasil dijahit menjadi Image.gz-dtb!"
                   else
@@ -393,15 +391,18 @@ jobs:
                       cp $BIN_DIR/Image.gz $GITHUB_WORKSPACE/kernel_binaries/Image.gz
                   fi
               fi
-              
-              # Salin DTBO jika diproduksi oleh kernel target
-              if [ -f "$BIN_DIR/dtbo.img" ]; then
-                  cp $BIN_DIR/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
-                  echo "SUKSES: dtbo.img berhasil disalin."
-              fi
           else
-              echo "ERROR: Direktori biner output kernel tidak valid!"
+              echo "ERROR: Biner kernel tidak ditemukan!"
               exit 1
+          fi
+          
+          # 3. Tetap salin DTBO (opsional, hanya jika kernel lu memproduksinya)
+          if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
+              cp ../out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
+          elif [ -f "arch/arm64/boot/dtbo.img" ]; then
+              cp arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
+          elif [ -f "out/arch/arm64/boot/dtbo.img" ]; then
+              cp out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
           fi
 
     - name: Upload Biner Mentah Kernel
