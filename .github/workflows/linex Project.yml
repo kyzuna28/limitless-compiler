@@ -183,14 +183,14 @@ jobs:
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
-         # FIX NAMA KERNEL: Menghapus '么' dan memberikan SPASI di awal string agar menggantikan strip bawaan Linux
-         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
+         # FIX NAMA KERNEL SINKRON: Kosongkan defconfig localversion agar tidak terjadi append ganda
+         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g" $TARGET_CONFIG || true
          
-         # Mengunci agar sistem build tidak menambahkan tanda '+' otomatis di ujung versi kernel
-         echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
+         # FIX VALIDASI PONSEL: Aktifkan auto localversion agar hash git '-dirty' terbuat resmi oleh Makefile Lineage
+         sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=y/g" $TARGET_CONFIG || true
          
-         # HAPUS perintah 'export LOCALVERSION=""' lama agar tidak menimpa / membatalkan string nama kernel saat proses kompilasi berlangsung
-         rm -f .scmversion
+         # JANGAN POTONG SCRIPT SETLOCALVERSION - Biarkan script asli bekerja mencari info commit git
+         echo "" > .scmversion
          
          # 1. FIXED AUDIO TECHPACK (AMPUTASI JALUR BERMASALAH)
          echo "Mematikan driver Elliptic Ultrasound Techpack..."
@@ -209,11 +209,13 @@ jobs:
          if [ -f drivers/firmware/Makefile ]; then
              sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
          fi
+         
          # 3. FIX TOTAL SECTION MISMATCH WARNINGS (ESTETIKA LOG BERSIH)
          echo "Membungkam peringatan Section Mismatch modpost..."
          echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $TARGET_CONFIG
          echo "CONFIG_DEBUG_SECTION_MISMATCH=n" >> $TARGET_CONFIG
          sed -i 's/CONFIG_DEBUG_SECTION_MISMATCH=y/CONFIG_DEBUG_SECTION_MISMATCH=n/g' $TARGET_CONFIG || true
+         
          # 4. CLEANSING RANJAU DTS QUALCOMM
          echo "Membersihkan target file VR (QVR) dan interposer rusak..."
          sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
@@ -228,20 +230,21 @@ jobs:
          echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
          echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
          
-         if [ "${{ inputs.disable-lto }}" = "true" ]; then
-             sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' $TARGET_CONFIG || true
-             sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' $TARGET_CONFIG || true
-             echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
-         fi
-         echo "Mengonfigurasi Frekuensi GPU..."
-         MIN_HZ=$(($(echo ${{ inputs.gpu_min_clock }}) * 1000000))
-         MAX_HZ=$(($(echo ${{ inputs.gpu_max_clock }}) * 1000000))
-         TARGET_DTSI="arch/arm64/boot/dts/qcom/sdm845-gpu.dtsi"
-         if [ -f "$TARGET_DTSI" ]; then
-             sed -i "/qcom,gpu-pwrlevel@0/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/qcom,gpu-freq = <$MAX_HZ>;/g" $TARGET_DTSI || true
-             sed -i "/qcom,gpu-pwrlevel@6/,/qcom,gpu-pwrlevel/s/qcom,gpu-freq = <.*>;/g" $TARGET_DTSI || true
+         # 5. AUTO-SELECT LTO ENGINE (MENGGUNAKAN INPUT LTO UI YANG VALID)
+         SELECTED_LTO="${{ inputs.lto_type }}"
+         sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_LTO_NONE=.*/# CONFIG_LTO_NONE is not set/g' $TARGET_CONFIG || true
+         if [ "$SELECTED_LTO" = "enable" ]; then
+             echo "CONFIG_LTO=y" >> $TARGET_CONFIG
+             echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
+         elif [ "$SELECTED_LTO" = "thinlto" ]; then
+             echo "CONFIG_LTO=y" >> $TARGET_CONFIG
+             echo "CONFIG_LTO_CLANG=y" >> $TARGET_CONFIG
+             echo "CONFIG_THINLTO=y" >> $TARGET_CONFIG
          else
-             find arch/arm64/boot/dts/ -name "*gpu*.dtsi" -exec sed -i "s/qcom,gpu-freq = <710000000>;/qcom,gpu-freq = <$MAX_HZ>;/g" {} + || true
+             echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
          
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
@@ -249,10 +252,11 @@ jobs:
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
+         
          echo "Menjinakkan Makefile VDSO secara adaptif..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
-             if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ] || [ "${{ inputs.compiler }}" = "sdclang" ]; then
+             if [ "${{ inputs.compiler }}" = "aosp-clang" ] && { [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; }; then
                  sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
                  sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
                  sed -i '/cc1as/d' $VDSO_MAKEFILE || true
@@ -265,23 +269,20 @@ jobs:
       run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
-         # MENYELURUS: Pastikan variabel lokal kernel dioper langsung saat 'make' dieksekusi agar nempel permanen di biner
+         
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-         export KBUILD_BUILD_HOST="project_build"
+         export KBUILD_BUILD_HOST="project-labs"
          
-         # SOLUSI NAMA DOBEL: Dikosongkan agar patuh pada konfigurasi Pro Configuration Engine sebelumnya
-         export LOCALVERSION=""
-         
-         # AUTO-SELECT DETECTOR ENGINE: Menentukan nilai IAS dari drop-down UI GitHub
          SELECTED_COMPILER="${{ inputs.compiler }}"
-         echo "Compiler yang dipilih di UI: $SELECTED_COMPILER"
-         
          if [ "$SELECTED_COMPILER" = "weebx-clang" ] || [ "$SELECTED_COMPILER" = "proton-clang" ]; then
              echo "Memicu Integrated Assembler (LLVM_IAS=1) untuk compiler modern..."
              USE_IAS=1
          else
-             echo "Memicu GCC External Assembler (LLVM_IAS=0) untuk mencegah Broken Pipe..."
-             USE_IAS=0
+             if [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
+                 USE_IAS=0
+             else
+                 USE_IAS=1
+             fi
          fi
          
          rm -rf ../out && mkdir -p ../out
@@ -293,7 +294,6 @@ jobs:
          else
              SAFE_CORES=1
          fi
-         echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
@@ -306,6 +306,8 @@ jobs:
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
+              GCC_TOOLCHAIN=$HOME/gcc-64 \
+              LOCALVERSION=" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}" \
               KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
@@ -319,7 +321,6 @@ jobs:
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
           
-          # 1. Tentukan variabel jalur pencarian biner utama
           BIN_DIR=""
           if [ -f "../out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "../out/arch/arm64/boot/Image.gz" ]; then
               BIN_DIR="../out/arch/arm64/boot"
@@ -329,7 +330,6 @@ jobs:
               BIN_DIR="out/arch/arm64/boot"
           fi
 
-          # 2. Proses Auto-Jahit Biar Ga Ribet Terpisah
           if [ -n "$BIN_DIR" ]; then
               if [ -f "$BIN_DIR/Image.gz-dtb" ]; then
                   echo "MANTAP: Image.gz-dtb bawaan ditemukan, langsung disalin."
@@ -337,7 +337,6 @@ jobs:
               elif [ -f "$BIN_DIR/Image.gz" ]; then
                   echo "INFO: Cuma ada Image.gz standar. Memulai proses jahit otomatis dengan DTB..."
                   
-                  # Cari file DTB spesifik sdm845 / beryllium
                   DTB_PATH=""
                   if [ -f "$BIN_DIR/dts/qcom/sdm845-beryllium.dtb" ]; then
                       DTB_PATH="$BIN_DIR/dts/qcom/sdm845-beryllium.dtb"
@@ -346,7 +345,6 @@ jobs:
                   fi
                   
                   if [ -n "$DTB_PATH" ]; then
-                      # Menjahit Image.gz + DTB menjadi Image.gz-dtb tunggal
                       cat $BIN_DIR/Image.gz $DTB_PATH > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
                       echo "SUKSES: File berhasil dijahit menjadi Image.gz-dtb!"
                   else
@@ -359,7 +357,6 @@ jobs:
               exit 1
           fi
           
-          # 3. Tetap salin DTBO (opsional, hanya jika kernel lu memproduksinya)
           if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
               cp ../out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
           elif [ -f "arch/arm64/boot/dtbo.img" ]; then
@@ -373,4 +370,3 @@ jobs:
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/*
-        
