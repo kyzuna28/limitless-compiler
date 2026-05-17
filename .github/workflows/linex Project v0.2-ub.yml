@@ -332,7 +332,7 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               GCC_TOOLCHAIN=$HOME/gcc-64 \
-              LOCALVERSION=" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}" \
+              LOCALVERSION="-${{ inputs.kernel_name }}-${{ inputs.rom_type }}" \
               KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
