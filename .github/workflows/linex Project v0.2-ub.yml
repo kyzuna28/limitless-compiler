@@ -1,5 +1,5 @@
 # linex Project - Customized for Poco F1 (beryllium)
-# Version 2.9 Ultimate Final Fix - Safe RAM, Adaptive Engine & Secure Packaging
+# Version 3.0 Ultimate Final Fix - Spoofer Engine & Secure Packaging
 name: khusus uname
 
 on:
@@ -100,7 +100,7 @@ jobs:
     steps:
     - name: Mempersiapkan Lingkungan Build & Bersihkan Storage Bloatware
       run: |
-         echo "Building Poco F1 Kernel Version 2.9 Pro Ultimate Final Fix"
+         echo "Building Poco F1 Kernel Version 3.0 Pro Ultimate Final Fix"
          sudo timedatectl set-timezone Asia/Jakarta
          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
          sudo docker image prune --all --force
@@ -189,7 +189,7 @@ jobs:
          rm -f .scmversion
          
          # ==============================================================================
-         # ANTI CRASH JALUR MANIPULASI 4.19 (WIREGUARD, ADRENO UAPI, DAN SDFAT)
+         # ANTI CRASH JALUR MANIPULASI 4.19 (WIREGUARD, ADRENO UAPI, SDFAT, & DRIVER WLAN)
          # ==============================================================================
          echo "Menjinakkan Wireguard pemicu error biner ktime (.tv64)..."
          sed -i 's/CONFIG_WIREGUARD=y/# CONFIG_WIREGUARD is not set/g' $TARGET_CONFIG || true
@@ -211,6 +211,22 @@ jobs:
          echo "# CONFIG_SDFAT_FS is not set" >> $TARGET_CONFIG
          if [ -f "fs/sdfat/Kconfig" ]; then
              sed -i 's/default y/default n/g' fs/sdfat/Kconfig || true
+         fi
+
+         echo "Menyuntikkan WLAN Version Spoofer Engine (Memaksa qcacld-3.0 mengira Linux 4.9)..."
+         # Teknik Spoofer: Memotong isi file penentu versi di sistem WLAN Qualcomm agar mengunci ke versi 4.9.0
+         if [ -f "drivers/staging/qcacld-3.0/Kbuild" ]; then
+             sed -i 's/LINUX_VERSION_CODE/264448/g' drivers/staging/qcacld-3.0/Kbuild || true
+         fi
+         # Melakukan override menyeluruh terhadap deteksi compiler pada file internal wifi host cmn
+         find drivers/staging/qcacld-3.0/ -type f -name "*.h" -exec sed -i 's/LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)/0/g' {} + || true
+         find drivers/staging/qcacld-3.0/ -type f -name "*.h" -exec sed -i 's/LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)/0/g' {} + || true
+         find drivers/staging/qcacld-3.0/ -type f -name "*.c" -exec sed -i 's/LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)/0/g' {} + || true
+         find drivers/staging/qcacld-3.0/ -type f -name "*.c" -exec sed -i 's/LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)/0/g' {} + || true
+         # Fix spesifik ranjau task_stack.h pada i_qdf_timer.h
+         TIMER_WIFI_H="drivers/staging/qca-wifi-host-cmn/qdf/linux/src/i_qdf_timer.h"
+         if [ -f "$TIMER_WIFI_H" ]; then
+             sed -i 's|#include <linux/sched/task_stack.h>|#include <linux/sched.h>|g' $TIMER_WIFI_H || true
          fi
          # ==============================================================================
 
@@ -368,7 +384,7 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               GCC_TOOLCHAIN=$HOME/gcc-64 \
-              KCFLAGS="-w -Wno-everything -Wno-error -fno-builtin -g0 -fpermissive -Wno-implicit-function-declaration -Wno-mismatched-return -Wno-implicit-int" \
+              KCFLAGS="-w -Wno-everything -Wno-error -fno-builtin -g0 -fpermissive -Wno-implicit-function-declaration -Wno-mismatched-return -Wno-implicit-int -Wno-return-type" \
               HOSTCFLAGS="-w -Wno-everything -Wno-error -fpermissive" \
               KBUILD_VARS="clean-files=" \
               Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
