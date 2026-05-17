@@ -183,14 +183,19 @@ jobs:
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
-         # FIX NAMA KERNEL: Menghapus spasi aneh dan menyamakan format standar Android
+         # 1. SET NAMA KERNEL DI DEFCONFIG (Aman, tanda + dari kamu akan dibaca sebagai teks biasa)
          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-${{ inputs.kernel_name }}-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
          
-         # Mengunci agar sistem build tidak menambahkan tanda '+' otomatis di ujung versi kernel
+         # 2. SUNTIK MATI AUTO LOCALVERSION
          sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=n/g" $TARGET_CONFIG || true
          echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
          
-         # AMAN: Jangan di-RM (hapus), buat file .scmversion kosong agar script setlocalversion bawaan kernel tidak merusak string
+         # 3. KUNCI TOTAL SCRIPT SETLOCALVERSION (Paling Krusial!)
+         # Kita paksa script ini untuk langsung memuntahkan string kosong agar tidak menggandakan tanda '+' kamu
+         if [ -f scripts/setlocalversion ]; then
+             echo '#!/bin/sh' > scripts/setlocalversion
+             echo 'echo ""' >> scripts/setlocalversion
+         fi
          echo "" > .scmversion
          
          # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
@@ -297,14 +302,14 @@ jobs:
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project_build"
          
-         # FIX: Definisikan LOCALVERSION secara tegas mengikuti input workflow agar sinkron dengan defconfig
-         export LOCALVERSION="-${{ inputs.kernel_name }}-${{ inputs.rom_type }}"
+         # BARIS EXPORT LOCALVERSION SUDAH DIHAPUS DI SINI AGAR TIDAK DOBEL
          
          # DETEKSI OTOMATIS IAS BERDASARKAN COMPILER DEMI KEAMANAN STRUKTUR ASSEMBLY
          if [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
              echo "Menggunakan Integrated Assembler (LLVM_IAS=1) untuk compiler modern."
              USE_IAS=1
          else
+         
              if [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
                  echo "Mengaktifkan mode penyesuaian khusus (LLVM_IAS=0) demi stabilitas Clang Lama."
                  USE_IAS=0
