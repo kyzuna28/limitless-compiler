@@ -285,6 +285,13 @@ jobs:
          fi
          # ==============================================================================
 
+         # ================= BYPASS GNU GOLD CHECK FOR LTO =================
+         echo "Memotong pengecekan GNU Gold Linker jadul agar LTO lancar..."
+         sed -i '/ifeq ($(call ld-ifversion, -lt, 222000000),y)/,/endif/d' Makefile || true
+         sed -i '/cannot use CONFIG_LTO_CLANG: requires GNU gold/d' Makefile || true
+         sed -i 's/requires GNU gold 1.12 or later/bypassed/g' Makefile || true
+         # ==============================================================================
+
          # ================= FIX QUALCOMM WI-FI ARGUMENT LIST TOO LONG =================
          echo "Mengaktifkan pengaman baris argumen untuk driver Wi-Fi Qualcomm..."
          echo "CONFIG_WLAN_BUILD_DEBUG_ARG_LIST_TOO_LONG=y" >> $TARGET_CONFIG
