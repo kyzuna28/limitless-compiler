@@ -1,6 +1,6 @@
 # linex Project - Customized for Poco F1 (beryllium)
 # Version 2.8 Ultimate Final Fix - Safe RAM, Adaptive Engine & Secure Packaging
-name: khusus lto
+name: 2.8 fix tes
 
 on:
   workflow_dispatch:
@@ -104,6 +104,7 @@ jobs:
          sudo timedatectl set-timezone Asia/Jakarta
          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
          sudo docker image prune --all --force
+
     - name: Checkout Workflow
       uses: actions/checkout@v4
 
@@ -119,6 +120,7 @@ jobs:
              sudo apt-get install --no-install-recommends -y libtinfo5 || true
          fi
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
+
     - name: Optimasi Swap Space Tinggi (Anti IO Failure)
       run: |
          sudo swapoff -a || true
@@ -127,6 +129,7 @@ jobs:
          sudo chmod 600 /mnt/swapfile
          sudo mkswap /mnt/swapfile
          sudo swapon /mnt/swapfile
+
     - name: Download Toolchains (Clean Setup - No Drama)
       run: |
          rm -rf $HOME/tc $HOME/gcc-64 $HOME/gcc-32 $HOME/tmp-tc
@@ -164,6 +167,7 @@ jobs:
              rm -rf $HOME/tc/bin/ld* $HOME/tc/bin/as*
          fi
          rm -rf $HOME/tmp-tc
+
     - name: Clone Kernel Source
       run: git clone --depth=1 ${{ inputs.kernel-url }} -b ${{ inputs.kernel-branch }} kernel-dir
       
@@ -179,30 +183,15 @@ jobs:
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
-         # Pembersihan anti-override/duplicate warnings sebelum disuntik ulang agar log rapi
-         sed -i '/CONFIG_LOCALVERSION/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_LOCALVERSION_AUTO/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_EFI/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_EFI_STUB/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_SECTION_MISMATCH_WARN_ONLY/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_DEBUG_SECTION_MISMATCH/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_KALLSYMS/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_KALLSYMS_ALL/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_KPROBES/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_HAVE_KPROBES/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_ANDROID_BINDERFS/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_CGROUPS/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_CGROUP_BPF/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_MEMCG/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_MEMCG_SWAP/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_LKDTM/d' $TARGET_CONFIG || true
-         
-         # FIX NAMA KERNEL: Menghapus '么' dan memberikan SPASI di awal string agar menggantikan strip bawaan Linux
-         echo "CONFIG_LOCALVERSION=\" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}\"" >> $TARGET_CONFIG
+         # FIX NAMA KERNEL: Menghapus spasi aneh dan menyamakan format standar Android
+         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-${{ inputs.kernel_name }}-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
          
          # Mengunci agar sistem build tidak menambahkan tanda '+' otomatis di ujung versi kernel
+         sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=n/g" $TARGET_CONFIG || true
          echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
-         rm -f .scmversion
+         
+         # AMAN: Jangan di-RM (hapus), buat file .scmversion kosong agar script setlocalversion bawaan kernel tidak merusak string
+         echo "" > .scmversion
          
          # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
          echo "Menjinakkan driver Elliptic Ultrasound Techpack..."
@@ -216,17 +205,20 @@ jobs:
          
          # 2. FIXED EFI STUB LINKER ERROR
          echo "Menonaktifkan EFI dan EFI_STUB dari file defconfig..."
+         sed -i 's/CONFIG_EFI=y/CONFIG_EFI=n/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_EFI_STUB=y/CONFIG_EFI_STUB=n/g' $TARGET_CONFIG || true
          echo "CONFIG_EFI=n" >> $TARGET_CONFIG
          echo "CONFIG_EFI_STUB=n" >> $TARGET_CONFIG
          if [ -f drivers/firmware/Makefile ]; then
              sed -i 's/obj-$(CONFIG_EFI).*=.*/obj-$(CONFIG_EFI) += /g' drivers/firmware/Makefile || true
          fi
-         
+
          # 3. FIX TOTAL SECTION MISMATCH WARNINGS (ESTETIKA LOG BERSIH)
          echo "Membungkam peringatan Section Mismatch modpost..."
          echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $TARGET_CONFIG
          echo "CONFIG_DEBUG_SECTION_MISMATCH=n" >> $TARGET_CONFIG
-         
+         sed -i 's/CONFIG_DEBUG_SECTION_MISMATCH=y/CONFIG_DEBUG_SECTION_MISMATCH=n/g' $TARGET_CONFIG || true
+
          # 4. CLEANSING RANJAU DTS QUALCOMM
          echo "Membersihkan target file VR (QVR) dan interposer rusak..."
          sed -i '/-qvr-/d' arch/arm64/boot/dts/qcom/Makefile || true
@@ -241,12 +233,23 @@ jobs:
          echo "CONFIG_KPROBES=y" >> $TARGET_CONFIG
          echo "CONFIG_HAVE_KPROBES=y" >> $TARGET_CONFIG
          
-         # 5. AUTO-SELECT LTO ENGINE (DISABLE / ENABLE / THINLTO) Bersih tanpa duplikasi
+         # 5. AUTO-SELECT LTO ENGINE (DISABLE / ENABLE / THINLTO)
          SELECTED_LTO="${{ inputs.lto_type }}"
          echo "Mode LTO yang dipilih di UI: $SELECTED_LTO"
-         sed -i '/CONFIG_LTO/d' $TARGET_CONFIG || true
-         sed -i '/CONFIG_THINLTO/d' $TARGET_CONFIG || true
          
+         # 6. UNIVERSAL ANDROID COMPATIBILITY PATCH (ANDROID 10 - 13+)
+         echo "Menyuntikkan flag kompatibilitas lintas Android (10-13+)..."
+         echo "CONFIG_ANDROID_BINDERFS=y" >> $TARGET_CONFIG
+         echo "CONFIG_CGROUPS=y" >> $TARGET_CONFIG
+         echo "CONFIG_CGROUP_BPF=y" >> $TARGET_CONFIG
+         echo "CONFIG_MEMCG=y" >> $TARGET_CONFIG
+         echo "CONFIG_MEMCG_SWAP=y" >> $TARGET_CONFIG
+         
+         # Bersihkan dulu sisa config LTO bawaan agar tidak bentrok
+         sed -i 's/CONFIG_LTO=.*/# CONFIG_LTO is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_LTO_CLANG=.*/# CONFIG_LTO_CLANG is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_THINLTO=.*/# CONFIG_THINLTO is not set/g' $TARGET_CONFIG || true
+         sed -i 's/CONFIG_LTO_NONE=.*/# CONFIG_LTO_NONE is not set/g' $TARGET_CONFIG || true
          if [ "$SELECTED_LTO" = "enable" ]; then
              echo "Mengaktifkan Full LTO Clang..."
              echo "CONFIG_LTO=y" >> $TARGET_CONFIG
@@ -260,24 +263,17 @@ jobs:
              echo "Menonaktifkan LTO (LTO None)..."
              echo "CONFIG_LTO_NONE=y" >> $TARGET_CONFIG
          fi
-         
-         # 6. UNIVERSAL ANDROID COMPATIBILITY PATCH (ANDROID 10 - 13+)
-         echo "Menyuntikkan flag kompatibilitas lintas Android (10-13+)..."
-         echo "CONFIG_ANDROID_BINDERFS=y" >> $TARGET_CONFIG
-         echo "CONFIG_CGROUPS=y" >> $TARGET_CONFIG
-         echo "CONFIG_CGROUP_BPF=y" >> $TARGET_CONFIG
-         echo "CONFIG_MEMCG=y" >> $TARGET_CONFIG
-         echo "CONFIG_MEMCG_SWAP=y" >> $TARGET_CONFIG
 
          if [ "${{ inputs.kernelsu }}" = "ksu" ]; then
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
          elif [ "${{ inputs.kernelsu }}" = "next" ]; then
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
-         
+
          # ================= INJEKSI FIX BROKEN PIPE UNTUK CLANG 12-13 =================
          echo "Menyuntikkan perbaikan macro string asm vgettimeofday..."
          find . -name "vgettimeofday.c" -exec sed -i 's/explicit "cc"/:"cc"/g' {} + || true
+
          echo "Menjinakkan berkas Makefile VDSO dari opsi no-integrated-as..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
@@ -288,18 +284,23 @@ jobs:
              fi
          fi
          # ==============================================================================
+
+         sed -i 's/CONFIG_LKDTM=y/CONFIG_LKDTM=n/g' $TARGET_CONFIG || true
          echo "CONFIG_LKDTM=n" >> $TARGET_CONFIG
-         
+
     - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
-        run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
+         # MENYELURUS: Pastikan variabel lokal kernel dioper langsung saat 'make' dieksekusi agar nempel permanen di biner
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project_build"
-         export LOCALVERSION=""
          
+         # FIX: Definisikan LOCALVERSION secara tegas mengikuti input workflow agar sinkron dengan defconfig
+         export LOCALVERSION="-${{ inputs.kernel_name }}-${{ inputs.rom_type }}"
+         
+         # DETEKSI OTOMATIS IAS BERDASARKAN COMPILER DEMI KEAMANAN STRUKTUR ASSEMBLY
          if [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
              echo "Menggunakan Integrated Assembler (LLVM_IAS=1) untuk compiler modern."
              USE_IAS=1
@@ -313,26 +314,6 @@ jobs:
              fi
          fi
          
-         # ==============================================================================
-         # SOLUSI RADIKAL ANTI 'ARGUMENT LIST TOO LONG' PADA MAKEFILE BUILD KERNEL
-         # ==============================================================================
-         echo "Memperbaiki scripts/Makefile.build agar mendukung list objek raksasa..."
-         MAKEFILE_BUILD="scripts/Makefile.build"
-         if [ -f "$MAKEFILE_BUILD" ]; then
-             # Trik Utama: Ubah perintah penggabungan objek bengkak ($2) agar menggunakan xargs atau loop per baris jika terlalu panjang
-             sed -i 's/cmd_link_multi_link_o = \$(if \$(strip \$(obj-y)),\$(LD) \$(ld_flags) -r -o \$@ \$(filter \$(obj-y),\$(link_obj_y)))/cmd_link_multi_link_o = \$(if \$(strip \$(obj-y)),echo \$(filter \$(obj-y),\$(link_obj_y)) | xargs \$(LD) \$(ld_flags) -r -o \$@)/g' $MAKEFILE_BUILD || true
-         fi
-
-         # Pangkas habis sub-modul internal WiFi qcacld-3.0 yang tidak kritis
-         if [ "${{ inputs.lto_type }}" = "thinlto" ] || [ "${{ inputs.lto_type }}" = "enable" ]; then
-             echo "Mengecilkan sub-modul WiFi qcacld-3.0 agar tidak meluap saat LTO..."
-             if [ -f drivers/staging/qcacld-3.0/Kbuild ]; then
-                 sed -i 's/CONFIG_QCA_CLD_WLAN_DIAG=y/CONFIG_QCA_CLD_WLAN_DIAG=n/g' drivers/staging/qcacld-3.0/Kbuild || true
-                 echo "CONFIG_QCA_CLD_WLAN_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
-             fi
-         fi
-         # ==============================================================================
-
          rm -rf ../out && mkdir -p ../out
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
@@ -344,22 +325,21 @@ jobs:
          fi
          echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
-         # Jalankan make dengan optimasi memori paling ketat (-g0)
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
-              AR=$HOME/tc/bin/llvm-ar \
-              NM=$HOME/tc/bin/llvm-nm \
-              OBJCOPY=$HOME/tc/bin/llvm-objcopy \
-              OBJDUMP=$HOME/tc/bin/llvm-objdump \
-              STRIP=aarch64-linux-android-strip \
+              LD=ld.lld \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              STRIP=llvm-strip \
               LLVM_IAS=$USE_IAS \
               CROSS_COMPILE=aarch64-linux-android- \
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               GCC_TOOLCHAIN=$HOME/gcc-64 \
-              KCFLAGS="-w -Wno-error -fno-builtin -g0" \
-              HOSTCFLAGS="-w -Wno-error" \
-              Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
+              KCFLAGS="-w -Wno-error -fno-builtin" \
+              HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "ERROR: Kompilasi Gagal!"
@@ -371,6 +351,7 @@ jobs:
       run: |
           mkdir -p $GITHUB_WORKSPACE/kernel_binaries
           
+          # 1. Tentukan variabel jalur pencarian biner utama
           BIN_DIR=""
           if [ -f "../out/arch/arm64/boot/Image.gz-dtb" ] || [ -f "../out/arch/arm64/boot/Image.gz" ]; then
               BIN_DIR="../out/arch/arm64/boot"
@@ -380,6 +361,7 @@ jobs:
               BIN_DIR="out/arch/arm64/boot"
           fi
 
+          # 2. Proses Auto-Jahit Biar Ga Ribet Terpisah
           if [ -n "$BIN_DIR" ]; then
               if [ -f "$BIN_DIR/Image.gz-dtb" ]; then
                   echo "MANTAP: Image.gz-dtb bawaan ditemukan, langsung disalin."
@@ -387,6 +369,7 @@ jobs:
               elif [ -f "$BIN_DIR/Image.gz" ]; then
                   echo "INFO: Cuma ada Image.gz standar. Memulai proses jahit otomatis dengan DTB..."
                   
+                  # Cari file DTB spesifik sdm845 / beryllium
                   DTB_PATH=""
                   if [ -f "$BIN_DIR/dts/qcom/sdm845-beryllium.dtb" ]; then
                       DTB_PATH="$BIN_DIR/dts/qcom/sdm845-beryllium.dtb"
@@ -395,6 +378,7 @@ jobs:
                   fi
                   
                   if [ -n "$DTB_PATH" ]; then
+                      # Menjahit Image.gz + DTB menjadi Image.gz-dtb tunggal
                       cat $BIN_DIR/Image.gz $DTB_PATH > $GITHUB_WORKSPACE/kernel_binaries/Image.gz-dtb
                       echo "SUKSES: File berhasil dijahit menjadi Image.gz-dtb!"
                   else
@@ -407,6 +391,7 @@ jobs:
               exit 1
           fi
           
+          # 3. Tetap salin DTBO (opsional, hanya jika kernel lu memproduksinya)
           if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
               cp ../out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
           elif [ -f "arch/arm64/boot/dtbo.img" ]; then
@@ -414,8 +399,10 @@ jobs:
           elif [ -f "out/arch/arm64/boot/dtbo.img" ]; then
               cp out/arch/arm64/boot/dtbo.img $GITHUB_WORKSPACE/kernel_binaries/dtbo.img
           fi
+
     - name: Upload Biner Mentah Kernel
       uses: actions/upload-artifact@v4
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/*
+        
