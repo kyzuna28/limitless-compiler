@@ -186,10 +186,20 @@ jobs:
          # FIX SINKRON: Kosongkan defconfig localversion agar tidak terjadi append ganda di biner akhir
          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g" $TARGET_CONFIG || true
          
-         # FIX VALIDASI PONSEL: Aktifkan auto localversion agar hash git 'g3e5c9c836683-dirty' terbuat resmi oleh Makefile
+         # FIX VALIDASI PONSEL: Paksa aktifkan auto localversion untuk memancing Git SHA keluar resmi
          sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=y/g" $TARGET_CONFIG || true
+         echo "CONFIG_LOCALVERSION_AUTO=y" >> $TARGET_CONFIG
          
-         # JANGAN POTONG SCRIPT SETLOCALVERSION - Biarkan script asli bekerja mencari info commit git agar tidak "Unavailable"
+         # JANGAN BIARKAN SCMVERSION MENGUNCI: Hapus total agar tidak membungkam identitas git commit
+         rm -f .scmversion
+         rm -f out/.scmversion
+         
+         # BYPASS SCRIPT LOCALVERSION: Paksa injeksi tanda '-dirty' di akar skrip bawaan kernel agar karakter unik/Jepang aman dibaca Android
+         if [ -f scripts/setlocalversion ]; then
+             echo "Memaksa skrip penamaan internal untuk mengizinkan penulisan kustom..."
+             sed -i 's/scm_version_string=""/scm_version_string="-dirty"/g' scripts/setlocalversion || true
+             sed -i 's/res="$res${localver}"/res="$res-dirty"/g' scripts/setlocalversion || true
+         fi
          
          # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
          echo "Menjinakkan driver Elliptic Ultrasound Techpack..."
@@ -320,6 +330,7 @@ jobs:
          fi
          echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
+         # FIX TOTAL: Menggunakan akhiran minus pada LOCALVERSION agar karakter non-ASCII/Jepang aman dijahit bersama hash Git digital
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
               AR=llvm-ar \
@@ -332,7 +343,7 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               GCC_TOOLCHAIN=$HOME/gcc-64 \
-              LOCALVERSION="-${{ inputs.kernel_name }}-${{ inputs.rom_type }}" \
+              LOCALVERSION="-${{ inputs.kernel_name }}-${{ inputs.rom_type }}-" \
               KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
@@ -395,4 +406,4 @@ jobs:
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/*
-        
+      
