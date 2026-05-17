@@ -22,12 +22,12 @@ on:
         type: string
       kernel_name:
         description: 'Nama Utama Kernel'
-        default: 'Cip128-St12'
+        default: 'cip128-st12'
         required: true
         type: string
       rom_type:
         description: 'Tipe ROM / Tag Cabang'
-        default: 'Nexus+'
+        default: 'Nexus'
         required: true
         type: string
       project_name:
