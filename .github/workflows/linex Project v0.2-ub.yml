@@ -184,19 +184,18 @@ jobs:
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
          # 1. SET NAMA KERNEL DI DEFCONFIG (Aman, tanda + dari kamu akan dibaca sebagai teks biasa)
-         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-${{ inputs.kernel_name }}-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
+         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g" $TARGET_CONFIG || true
          
          # 2. SUNTIK MATI AUTO LOCALVERSION
          sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=n/g" $TARGET_CONFIG || true
          echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
          
-         # 3. FIX AMAN: Jinakkan git check tanpa menghapus total fungsi penamaan script bawaan
+         # 3. FIX MUTLAK: Potong script setlocalversion agar mutlak memuntahkan string kosong
          if [ -f scripts/setlocalversion ]; then
-             sed -i 's/scm_version --short/echo ""/g' scripts/setlocalversion || true
-             sed -i 's/echo "+"/echo ""/g' scripts/setlocalversion || true
+             echo '#!/bin/sh' > scripts/setlocalversion
+             echo 'echo ""' >> scripts/setlocalversion
+             chmod +x scripts/setlocalversion
          fi
-         
-         # Buat file kosong agar top-level Makefile tidak otomatis menambahkan tanda '+' dirty commit
          echo "" > .scmversion
          
          # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
@@ -343,6 +342,7 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               GCC_TOOLCHAIN=$HOME/gcc-64 \
+              LOCALVERSION="-${{ inputs.kernel_name }}-${{ inputs.rom_type }}" \
               KCFLAGS="-w -Wno-error -fno-builtin" \
               HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
