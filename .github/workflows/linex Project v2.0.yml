@@ -292,6 +292,7 @@ jobs:
          
     - name: Proses Kompilasi Pro (SAFE MULTITHREADING ENGINE)
       run: |
+        run: |
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
@@ -313,10 +314,18 @@ jobs:
          fi
          
          # ==============================================================================
-         # FIX JALUR DARURAT: Potong modul internal WiFi yang bengkak khusus saat LTO/ThinLTO aktif
-         # Ini melenyapkan masalah "Argument list too long" pada driver qcacld-3.0
+         # SOLUSI RADIKAL ANTI 'ARGUMENT LIST TOO LONG' PADA MAKEFILE BUILD KERNEL
+         # ==============================================================================
+         echo "Memperbaiki scripts/Makefile.build agar mendukung list objek raksasa..."
+         MAKEFILE_BUILD="scripts/Makefile.build"
+         if [ -f "$MAKEFILE_BUILD" ]; then
+             # Trik Utama: Ubah perintah penggabungan objek bengkak ($2) agar menggunakan xargs atau loop per baris jika terlalu panjang
+             sed -i 's/cmd_link_multi_link_o = \$(if \$(strip \$(obj-y)),\$(LD) \$(ld_flags) -r -o \$@ \$(filter \$(obj-y),\$(link_obj_y)))/cmd_link_multi_link_o = \$(if \$(strip \$(obj-y)),echo \$(filter \$(obj-y),\$(link_obj_y)) | xargs \$(LD) \$(ld_flags) -r -o \$@)/g' $MAKEFILE_BUILD || true
+         fi
+
+         # Pangkas habis sub-modul internal WiFi qcacld-3.0 yang tidak kritis
          if [ "${{ inputs.lto_type }}" = "thinlto" ] || [ "${{ inputs.lto_type }}" = "enable" ]; then
-             echo "Mengecilkan sub-modul WiFi qcacld-3.0 agar list objek tidak meluap..."
+             echo "Mengecilkan sub-modul WiFi qcacld-3.0 agar tidak meluap saat LTO..."
              if [ -f drivers/staging/qcacld-3.0/Kbuild ]; then
                  sed -i 's/CONFIG_QCA_CLD_WLAN_DIAG=y/CONFIG_QCA_CLD_WLAN_DIAG=n/g' drivers/staging/qcacld-3.0/Kbuild || true
                  echo "CONFIG_QCA_CLD_WLAN_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
@@ -335,9 +344,7 @@ jobs:
          fi
          echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
-         # FIX THINLTO & ARGUMENT LIST TOO LONG: 
-         # 1. Ditambahkan -g0 pada KCFLAGS untuk mematikan kode debug tiruan yang membengkakkan memori.
-         # 2. Ditambahkan KBUILD_VARS="clean-files=" untuk membersihkan sisa string teks linker yang terlalu panjang.
+         # Jalankan make dengan optimasi memori paling ketat (-g0)
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
               AR=$HOME/tc/bin/llvm-ar \
@@ -352,7 +359,6 @@ jobs:
               GCC_TOOLCHAIN=$HOME/gcc-64 \
               KCFLAGS="-w -Wno-error -fno-builtin -g0" \
               HOSTCFLAGS="-w -Wno-error" \
-              KBUILD_VARS="clean-files=" \
               Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
