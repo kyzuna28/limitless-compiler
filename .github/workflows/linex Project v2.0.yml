@@ -312,6 +312,18 @@ jobs:
              fi
          fi
          
+         # ==============================================================================
+         # FIX JALUR DARURAT: Potong modul internal WiFi yang bengkak khusus saat LTO/ThinLTO aktif
+         # Ini melenyapkan masalah "Argument list too long" pada driver qcacld-3.0
+         if [ "${{ inputs.lto_type }}" = "thinlto" ] || [ "${{ inputs.lto_type }}" = "enable" ]; then
+             echo "Mengecilkan sub-modul WiFi qcacld-3.0 agar list objek tidak meluap..."
+             if [ -f drivers/staging/qcacld-3.0/Kbuild ]; then
+                 sed -i 's/CONFIG_QCA_CLD_WLAN_DIAG=y/CONFIG_QCA_CLD_WLAN_DIAG=n/g' drivers/staging/qcacld-3.0/Kbuild || true
+                 echo "CONFIG_QCA_CLD_WLAN_DIAG=n" >> arch/arm64/configs/${{ inputs.kernel-config }}
+             fi
+         fi
+         # ==============================================================================
+
          rm -rf ../out && mkdir -p ../out
          make ARCH=arm64 O=../out ${{ inputs.kernel-config }}
          
@@ -323,7 +335,9 @@ jobs:
          fi
          echo "Menggunakan $SAFE_CORES dari $TOTAL_CORES Core demi kestabilan alokasi RAM..."
          
-         # FIX THINLTO: Mengarahkan AR, NM, OBJCOPY, dan OBJDUMP langsung ke biner internal Toolchain ($HOME/tc/bin/)
+         # FIX THINLTO & ARGUMENT LIST TOO LONG: 
+         # 1. Ditambahkan -g0 pada KCFLAGS untuk mematikan kode debug tiruan yang membengkakkan memori.
+         # 2. Ditambahkan KBUILD_VARS="clean-files=" untuk membersihkan sisa string teks linker yang terlalu panjang.
          make -j$SAFE_CORES ARCH=arm64 O=../out \
               CC=clang \
               AR=$HOME/tc/bin/llvm-ar \
@@ -336,8 +350,10 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-androideabi- \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               GCC_TOOLCHAIN=$HOME/gcc-64 \
-              KCFLAGS="-w -Wno-error -fno-builtin" \
-              HOSTCFLAGS="-w -Wno-error" Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
+              KCFLAGS="-w -Wno-error -fno-builtin -g0" \
+              HOSTCFLAGS="-w -Wno-error" \
+              KBUILD_VARS="clean-files=" \
+              Image.gz Image.gz-dtb dtbs 2>&1 | tee build.log
          
          if [ ! -f ../out/arch/arm64/boot/Image ] && [ ! -f ../out/arch/arm64/boot/Image.gz ] && [ ! -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
              echo "ERROR: Kompilasi Gagal!"
