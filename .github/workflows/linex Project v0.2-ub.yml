@@ -188,6 +188,11 @@ jobs:
          # HAPUS perintah 'export LOCALVERSION=""' lama agar tidak menimpa / membatalkan string nama kernel saat proses kompilasi berlangsung
          rm -f .scmversion
          
+         # PERBAIKAN UTAMA: Mematikan WireGuard bawaan yang memicu macro error ktime_to_ns
+         echo "Menjinakkan Wireguard pemicu error ktime_to_ns..."
+         sed -i 's/CONFIG_WIREGUARD=y/# CONFIG_WIREGUARD is not set/g' $TARGET_CONFIG || true
+         echo "# CONFIG_WIREGUARD is not set" >> $TARGET_CONFIG
+
          # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
          echo "Menjinakkan driver Elliptic Ultrasound Techpack..."
          sed -i 's/CONFIG_AUDIO_ELLIPTIC=y/CONFIG_AUDIO_ELLIPTIC=n/g' $TARGET_CONFIG || true
