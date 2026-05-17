@@ -22,12 +22,12 @@ on:
         type: string
       kernel_name:
         description: 'Nama Utama Kernel'
-        default: 'Kyzuna'
+        default: 'cip128-st12'
         required: true
         type: string
       rom_type:
         description: 'Tipe ROM / Tag Cabang'
-        default: 'Raven-Gki'
+        default: 'Kyzuna'
         required: true
         type: string
       project_name:
@@ -194,14 +194,13 @@ jobs:
          
          TARGET_CONFIG="arch/arm64/configs/${{ inputs.kernel-config }}"
          
-         # FIX NAMA KERNEL: Kosongkan isi defconfig localversion dasar agar tidak memicu append ganda
+         # FIX SINKRON: Kosongkan defconfig localversion agar tidak terjadi append ganda di biner akhir
          sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"\"/g" $TARGET_CONFIG || true
          
-         # FIX VALIDASI PONSEL: Paksa hidup agar hash git otomatis terdeteksi resmi oleh Makefile kbuild
+         # FIX VALIDASI PONSEL: Aktifkan auto localversion agar hash git 'g3e5c9c836683-dirty' terbuat resmi oleh Makefile
          sed -i "s/CONFIG_LOCALVERSION_AUTO=.*/CONFIG_LOCALVERSION_AUTO=y/g" $TARGET_CONFIG || true
          
-         # Bersihkan file scmversion bawaan agar string penamaan lokal tidak dipotong sistem git kbuild
-         echo "" > .scmversion
+         # JANGAN POTONG SCRIPT SETLOCALVERSION - Biarkan script asli bekerja mencari info commit git agar tidak "Unavailable"
          
          # 1. FIXED AUDIO TECHPACK (PEMBERSIHAN AMAN TANPA MERUSAK MAKEFILE)
          echo "Menjinakkan driver Elliptic Ultrasound Techpack..."
@@ -280,14 +279,16 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
          fi
 
-         # ================= INJEKSI FIX BROKEN PIPE UNTUK CLANG 11-13 =================
+         # ================= INJEKSI FIX BROKEN PIPE UNTUK CLANG 12-13 =================
          echo "Menyuntikkan perbaikan macro string asm vgettimeofday..."
          find . -name "vgettimeofday.c" -exec sed -i 's/explicit "cc"/:"cc"/g' {} + || true
 
+         echo "Menjinakkan berkas Makefile VDSO dari opsi no-integrated-as..."
          VDSO_MAKEFILE="arch/arm64/kernel/vdso/Makefile"
          if [ -f "$VDSO_MAKEFILE" ]; then
-             if [ "${{ inputs.compiler }}" = "aosp-clang" ] && { [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; }; then
+             if [ "${{ inputs.compiler }}" = "aosp-clang" ] && { [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; }; then
                  sed -i 's/-cc1as//g' $VDSO_MAKEFILE || true
+                 sed -i 's/CC_FLAGS_VDSO .=\s*-no-integrated-as//g' $VDSO_MAKEFILE || true
                  sed -i '/cc1as/d' $VDSO_MAKEFILE || true
              fi
          fi
@@ -301,7 +302,6 @@ jobs:
          cd kernel-dir
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
-         # MENYELURUS: Oper string penamaan ke lingkungan runtime Kbuild agar nempel permanen di biner kernel
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project_labs"
          
@@ -310,7 +310,8 @@ jobs:
              echo "Menggunakan Integrated Assembler (LLVM_IAS=1) untuk compiler modern."
              USE_IAS=1
          else
-             if [ "${{ inputs.aosp-clang-ver }}" = "11" ] || [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
+         
+             if [ "${{ inputs.aosp-clang-ver }}" = "12" ] || [ "${{ inputs.aosp-clang-ver }}" = "13" ]; then
                  echo "Mengaktifkan mode penyesuaian khusus (LLVM_IAS=0) demi stabilitas Clang Lama."
                  USE_IAS=0
              else
