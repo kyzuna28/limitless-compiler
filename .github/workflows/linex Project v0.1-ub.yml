@@ -298,7 +298,7 @@ jobs:
          export PATH=$HOME/tc/bin:$HOME/gcc-64/bin:$HOME/gcc-32/bin:$PATH
          
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
-         export KBUILD_BUILD_HOST="project-labs"
+         export KBUILD_BUILD_HOST="project_labs"
          
          # SOLUSI: Mengosongkan LOCALVERSION agar tidak menimpa dan mendobelkan nama kernel
          export LOCALVERSION=""
