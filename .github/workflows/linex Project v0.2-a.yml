@@ -197,8 +197,11 @@ jobs:
          # Kita set default menggunakan 'beryllium_defconfig'
          TARGET_CONFIG="arch/arm64/configs/beryllium_defconfig"
          
-         # FIX NAMA KERNEL
-         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-${{ inputs.kernel_name }}-么-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
+         # FIX NAMA KERNEL: Menghapus '么' dan memberikan SPASI di awal string agar menggantikan strip bawaan Linux
+         sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\" ${{ inputs.kernel_name }}-${{ inputs.rom_type }}\"/g" $TARGET_CONFIG || true
+         
+         # Mengunci agar sistem build tidak menambahkan tanda '+' otomatis di ujung versi kernel
+         echo "CONFIG_LOCALVERSION_AUTO=n" >> $TARGET_CONFIG
          rm -f .scmversion
          
          # 1. FIXED AUDIO TECHPACK
@@ -289,7 +292,9 @@ jobs:
          
          export KBUILD_BUILD_USER="${{ inputs.project_name }}"
          export KBUILD_BUILD_HOST="project-labs"
-         export LOCALVERSION="-${{ inputs.kernel_name }}-么-${{ inputs.rom_type }}"
+         
+         # SOLUSI NAMA DOBEL: Dikosongkan agar patuh pada konfigurasi Pro Configuration Engine sebelumnya
+         export LOCALVERSION=""
          
          if [ "${{ inputs.compiler }}" = "proton-clang" ] || [ "${{ inputs.compiler }}" = "weebx-clang" ]; then
              USE_IAS=1
@@ -380,3 +385,4 @@ jobs:
       with:
         name: "${{ inputs.zip_name }}-${{ inputs.rom_type }}-Binaries"
         path: kernel_binaries/*
+        
